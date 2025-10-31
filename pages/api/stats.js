@@ -37,39 +37,70 @@ function getDateLimit(range) {
   return now.toISOString();
 }
 
-// Busca eventos do Supabase com filtro de data
-// NOTA: Supabase JS client tem limite de ~1000-10000 linhas
-// Para mais que isso, precisa usar SQL function (ver SUPABASE_SQL_FUNCTION.md)
-async function getEventsFromSupabase(range) {
+// Busca estatísticas agregadas do Supabase usando SQL function
+// Isso é MUITO mais eficiente: retorna ~100 linhas ao invés de 45k!
+async function getStatsFromSupabase(range) {
   const dateLimit = getDateLimit(range);
 
-  // Monta a query
-  let query = supabase
-    .from('events')
-    .select('quiz_id, event, created_at');
+  console.log(`[Stats] Calling get_quiz_stats RPC with date_limit:`, dateLimit);
 
-  // Aplica filtro de data se houver
-  if (dateLimit) {
-    query = query.gte('created_at', dateLimit);
-  }
-
-  // Ordena por data (mais recentes primeiro)
-  query = query.order('created_at', { ascending: false });
-
-  // Tenta buscar até 100k eventos (máximo que o Supabase permite)
-  // Se tiver mais que 100k, só vai pegar os 100k mais recentes
-  query = query.limit(100000);
-
-  const { data, error } = await query;
+  // Chama a função SQL que criamos
+  const { data, error } = await supabase.rpc('get_quiz_stats', {
+    date_limit: dateLimit
+  });
 
   if (error) {
-    console.error('Supabase query error:', error);
+    console.error('[Stats] RPC error:', error);
     throw error;
   }
 
-  console.log(`[Stats] Fetched ${data?.length || 0} events from Supabase`);
+  console.log(`[Stats] RPC returned ${data?.length || 0} aggregated rows`);
 
-  return data || [];
+  // data agora está no formato:
+  // [
+  //   { quiz_id: 'cbcn', event: 'view', total: 25000 },
+  //   { quiz_id: 'cbcn', event: 'complete', total: 11000 },
+  //   ...
+  // ]
+
+  // Calcula estatísticas direto dos dados agregados (muito mais eficiente!)
+  return calculateStatsFromAggregated(data || []);
+}
+
+// Calcula estatísticas a partir de dados agregados (não precisa processar 45k linhas!)
+function calculateStatsFromAggregated(aggregatedData) {
+  const stats = {};
+
+  // Processa os dados agregados
+  aggregatedData.forEach((row) => {
+    const quizId = row.quiz_id;
+    const event = row.event;
+    const total = parseInt(row.total || 0);
+
+    if (!stats[quizId]) {
+      stats[quizId] = { views: 0, completes: 0 };
+    }
+
+    if (event === 'view') {
+      stats[quizId].views = total;
+    } else if (event === 'complete') {
+      stats[quizId].completes = total;
+    }
+  });
+
+  // Converte para array e adiciona taxa de conversão
+  return Object.entries(stats).map(([quizId, data]) => {
+    const conversionRate = data.views > 0
+      ? ((data.completes / data.views) * 100).toFixed(1)
+      : '0.0';
+
+    return {
+      quizId,
+      views: data.views,
+      completes: data.completes,
+      conversionRate: `${conversionRate}%`
+    };
+  }).sort((a, b) => b.views - a.views); // Ordena por views (maior primeiro)
 }
 
 // Busca eventos do JSON local com filtro de data
@@ -145,35 +176,48 @@ export default async function handler(req, res) {
     // Pega o range do query string (7d, 30d, ou all)
     const { range, debug } = req.query;
 
-    let events;
+    let stats;
     let source = 'unknown';
+    let totalEvents = 0;
 
-    // Busca eventos do Supabase ou JSON local
+    // Busca estatísticas do Supabase (já agregadas) ou JSON local
     if (isSupabaseConfigured()) {
       try {
-        events = await getEventsFromSupabase(range);
+        // getStatsFromSupabase já retorna as stats calculadas (não retorna eventos individuais)
+        stats = await getStatsFromSupabase(range);
         source = 'supabase';
-        console.log(`[Stats] Source: supabase, Events: ${events.length}`);
+
+        // Calcula total de eventos a partir das stats
+        totalEvents = stats.reduce((sum, s) => sum + s.views + s.completes, 0);
+
+        console.log(`[Stats] Source: supabase (RPC), Stats: ${stats.length} quizzes, Total events: ${totalEvents}`);
       } catch (supabaseError) {
         console.error('Error fetching from Supabase, falling back to JSON:', supabaseError);
-        events = getEventsFromJSON(range);
+
+        // Fallback: busca do JSON local e calcula stats
+        const events = getEventsFromJSON(range);
+        stats = calculateStats(events);
         source = 'json-fallback';
-        console.log(`[Stats] Source: json-fallback, Events: ${events.length}`);
+        totalEvents = events.length;
+
+        console.log(`[Stats] Source: json-fallback, Events: ${totalEvents}`);
       }
     } else {
-      events = getEventsFromJSON(range);
+      // Busca do JSON local e calcula stats
+      const events = getEventsFromJSON(range);
+      stats = calculateStats(events);
       source = 'json';
-      console.log(`[Stats] Source: json, Events: ${events.length}`);
-    }
+      totalEvents = events.length;
 
-    // Calcula estatísticas
-    const stats = calculateStats(events);
+      console.log(`[Stats] Source: json, Events: ${totalEvents}`);
+    }
 
     // Se debug=true, retorna informações adicionais
     if (debug === 'true') {
       return res.status(200).json({
         source: source,
-        totalEvents: events.length,
+        totalEvents: totalEvents,
+        totalQuizzes: stats.length,
         supabaseConfigured: isSupabaseConfigured(),
         range: range || 'all',
         stats: stats
