@@ -27,18 +27,28 @@ function getClientIp(req) {
 
 // Salva evento no Supabase
 async function saveToSupabase(event, quizId, ip) {
-  const { error } = await supabase
-    .from('events')
-    .insert([
-      {
-        quiz_id: quizId,
-        event: event,
-        ip: ip,
-      }
-    ]);
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .insert([
+        {
+          quiz_id: quizId,
+          event: event,
+          ip: ip,
+        }
+      ])
+      .select();
 
-  if (error) {
-    throw error;
+    if (error) {
+      console.error('❌ Erro do Supabase:', error);
+      throw error;
+    }
+
+    console.log('✅ Dado inserido no Supabase:', data);
+    return data;
+  } catch (err) {
+    console.error('❌ Exceção ao salvar no Supabase:', err);
+    throw err;
   }
 }
 
@@ -111,14 +121,20 @@ export default async function handler(req, res) {
     const ip = getClientIp(req);
 
     // Tenta salvar no Supabase, senão usa JSON local
-    if (isSupabaseConfigured()) {
+    const supabaseConfigured = isSupabaseConfigured();
+    console.log(`📝 Salvando evento: ${event} | Quiz: ${quizId} | Supabase: ${supabaseConfigured ? 'SIM' : 'NÃO'}`);
+
+    if (supabaseConfigured) {
+      console.log('💾 Tentando salvar no Supabase...');
       await saveToSupabase(event, quizId, ip);
+      console.log('✅ Salvo no Supabase com sucesso');
     } else {
+      console.log('⚠️  Supabase não configurado, usando fallback');
       saveToJSON(event, quizId, ip);
     }
 
     // Resposta rápida
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ ok: true, saved: supabaseConfigured ? 'supabase' : 'json' });
 
   } catch (error) {
     console.error('Error tracking event:', error);
