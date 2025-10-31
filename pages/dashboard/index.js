@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [authError, setAuthError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [range, setRange] = useState('all');
+  const [lastUpdate, setLastUpdate] = useState(null);
 
   // Verifica autenticação no localStorage
   useEffect(() => {
@@ -48,14 +49,32 @@ export default function Dashboard() {
   }, []);
 
   // Atualiza a cada 5 segundos com filtro de data
-  const { data: stats, error, isLoading } = useSWR(
+  const { data: stats, error, isLoading, mutate } = useSWR(
     isAuthenticated ? `/api/stats?range=${range}` : null,
     fetcher,
     {
       refreshInterval: 5000,
       revalidateOnFocus: true,
+      onSuccess: (data) => {
+        setLastUpdate(new Date());
+        console.log('📊 Dashboard atualizado:', {
+          timestamp: new Date().toISOString(),
+          quizzes: data?.length || 0,
+          totalViews: data?.reduce((sum, s) => sum + s.views, 0) || 0,
+          totalCompletes: data?.reduce((sum, s) => sum + s.completes, 0) || 0,
+        });
+      },
+      onError: (err) => {
+        console.error('❌ Erro ao atualizar dashboard:', err);
+      },
     }
   );
+
+  // Função de refresh manual
+  const handleManualRefresh = async () => {
+    console.log('🔄 Refresh manual iniciado...');
+    await mutate();
+  };
 
   // Função de login com validação real
   const handleLogin = async (e) => {
@@ -207,13 +226,29 @@ export default function Dashboard() {
                 <p className="text-gray-600 mt-2">
                   Estatísticas em tempo real - Atualização automática a cada 5 segundos
                 </p>
+                {lastUpdate && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Última atualização: {lastUpdate.toLocaleTimeString('pt-BR')}
+                  </p>
+                )}
               </div>
-              <button
-                onClick={handleLogout}
-                className="text-sm text-gray-600 hover:text-gray-900 underline"
-              >
-                Sair
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleManualRefresh}
+                  disabled={isLoading}
+                  className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors disabled:bg-indigo-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  title="Atualizar agora"
+                >
+                  <span className={isLoading ? 'animate-spin' : ''}>🔄</span>
+                  Atualizar
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-gray-600 hover:text-gray-900 underline"
+                >
+                  Sair
+                </button>
+              </div>
             </div>
 
             {/* Filtros de data */}
