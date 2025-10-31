@@ -59,21 +59,36 @@ async function getEventsFromSupabase(range) {
 
 // Busca eventos do JSON local com filtro de data
 function getEventsFromJSON(range) {
-  ensureDataFile();
+  // Na Vercel, o sistema de arquivos é read-only
+  const isProduction = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 
-  const fileContent = fs.readFileSync(eventsFile, 'utf8');
-  const data = JSON.parse(fileContent);
-  let events = data.events || [];
-
-  const dateLimit = getDateLimit(range);
-  if (dateLimit) {
-    events = events.filter(e => {
-      const eventDate = new Date(e.timestamp || e.created_at);
-      return eventDate >= new Date(dateLimit);
-    });
+  if (isProduction) {
+    // Em produção sem Supabase, retorna array vazio
+    console.log('⚠️  Sem dados (Supabase não configurado)');
+    return [];
   }
 
-  return events;
+  // Em desenvolvimento, lê do JSON local
+  try {
+    ensureDataFile();
+
+    const fileContent = fs.readFileSync(eventsFile, 'utf8');
+    const data = JSON.parse(fileContent);
+    let events = data.events || [];
+
+    const dateLimit = getDateLimit(range);
+    if (dateLimit) {
+      events = events.filter(e => {
+        const eventDate = new Date(e.timestamp || e.created_at);
+        return eventDate >= new Date(dateLimit);
+      });
+    }
+
+    return events;
+  } catch (error) {
+    console.error('Erro ao ler JSON:', error);
+    return [];
+  }
 }
 
 // Função para calcular estatísticas

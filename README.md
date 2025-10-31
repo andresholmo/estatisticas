@@ -2,13 +2,15 @@
 
 Sistema completo e leve de rastreamento de conversão de quizzes (pressells) hospedado na Vercel, com backend em API Routes (Next.js), **persistência de dados no Supabase**, **autenticação protegida**, **filtros de data** e **gráficos visuais** com estatísticas em tempo real.
 
+> ⚠️ **IMPORTANTE:** O Supabase é **OBRIGATÓRIO** para produção. Sem ele, as APIs funcionarão mas **não salvarão dados**. [Configure o Supabase](#-configuração-do-supabase) antes de usar em produção.
+
 ## 🆕 Novidades da v2.0
 
 - ✅ **Persistência Real**: Dados armazenados no Supabase (PostgreSQL)
 - ✅ **Autenticação**: Acesso protegido ao dashboard com senha (AUTH_TOKEN)
 - ✅ **Filtros de Data**: Visualize estatísticas dos últimos 7 dias, 30 dias ou todos
 - ✅ **Gráfico Visual**: Visualização de conversão com Recharts
-- ✅ **Compatibilidade**: Mantém suporte para JSON local como fallback
+- ✅ **Modo Desenvolvimento**: Suporte para JSON local em ambiente de desenvolvimento
 
 ## 🚀 Deploy Rápido
 

@@ -44,20 +44,41 @@ async function saveToSupabase(event, quizId, ip) {
 
 // Salva evento no JSON local (fallback)
 function saveToJSON(event, quizId, ip) {
-  ensureDataFile();
+  // Na Vercel, o sistema de arquivos é read-only
+  // Vamos verificar se estamos em ambiente de produção
+  const isProduction = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 
-  const fileContent = fs.readFileSync(eventsFile, 'utf8');
-  const data = JSON.parse(fileContent);
+  if (isProduction) {
+    // Em produção sem Supabase, apenas loga (não persiste)
+    console.log('⚠️  Evento não persistido (Supabase não configurado):', {
+      event,
+      quizId,
+      ip,
+      timestamp: new Date().toISOString()
+    });
+    return;
+  }
 
-  const newEvent = {
-    event,
-    quizId,
-    timestamp: new Date().toISOString(),
-    ip
-  };
+  // Em desenvolvimento, salva no JSON local
+  try {
+    ensureDataFile();
 
-  data.events.push(newEvent);
-  fs.writeFileSync(eventsFile, JSON.stringify(data, null, 2));
+    const fileContent = fs.readFileSync(eventsFile, 'utf8');
+    const data = JSON.parse(fileContent);
+
+    const newEvent = {
+      event,
+      quizId,
+      timestamp: new Date().toISOString(),
+      ip
+    };
+
+    data.events.push(newEvent);
+    fs.writeFileSync(eventsFile, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('Erro ao salvar em JSON:', error);
+    // Não lança erro, apenas loga
+  }
 }
 
 export default async function handler(req, res) {
