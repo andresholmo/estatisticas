@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { logEventToMonitor } from './monitor';
 import fs from 'fs';
 import path from 'path';
 
@@ -119,6 +120,14 @@ export default async function handler(req, res) {
     }
 
     const ip = getClientIp(req);
+
+    // Registra no monitor para debug
+    logEventToMonitor({
+      event,
+      quizId,
+      ip,
+      userAgent: req.headers['user-agent']?.substring(0, 100) || 'unknown'
+    });
 
     // Tenta salvar no Supabase, senão usa JSON local
     const supabaseConfigured = isSupabaseConfigured();
