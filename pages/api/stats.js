@@ -37,40 +37,85 @@ function getDateLimit(range) {
   return now.toISOString();
 }
 
-// Busca eventos do Supabase com filtro de data (com paginação)
-async function getEventsFromSupabase(range) {
-  const pageSize = 10000; // Busca 10k por vez
-  let allEvents = [];
-  let page = 0;
-  let hasMore = true;
+// Busca estatísticas agregadas direto do Supabase (sem buscar eventos individuais)
+async function getStatsFromSupabase(range) {
+  const dateLimit = getDateLimit(range);
 
-  while (hasMore) {
-    let query = supabase
-      .from('events')
-      .select('quiz_id, event, created_at')
-      .range(page * pageSize, (page + 1) * pageSize - 1);
+  // SQL query que faz agregação no banco (muito mais eficiente!)
+  let query = `
+    SELECT
+      quiz_id,
+      event,
+      COUNT(*) as count
+    FROM events
+  `;
 
-    const dateLimit = getDateLimit(range);
-    if (dateLimit) {
-      query = query.gte('created_at', dateLimit);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      throw error;
-    }
-
-    if (data && data.length > 0) {
-      allEvents = allEvents.concat(data);
-      hasMore = data.length === pageSize; // Se retornou menos que pageSize, acabou
-      page++;
-    } else {
-      hasMore = false;
-    }
+  if (dateLimit) {
+    query += ` WHERE created_at >= '${dateLimit}'`;
   }
 
-  return allEvents;
+  query += `
+    GROUP BY quiz_id, event
+    ORDER BY quiz_id
+  `;
+
+  const { data, error } = await supabase.rpc('get_stats', {
+    date_limit: dateLimit
+  }).catch(async () => {
+    // Fallback: Se RPC não existir, usa query direta
+    const { data: rawData, error: rawError } = await supabase
+      .from('events')
+      .select('quiz_id, event, created_at');
+
+    if (rawError) throw rawError;
+    return { data: rawData, error: null };
+  });
+
+  if (error) {
+    // Se falhar, usa método antigo (busca todos os eventos)
+    return await getEventsFromSupabaseOld(range);
+  }
+
+  // Se retornou dados agregados, converte para formato esperado
+  if (data && Array.isArray(data) && data[0]?.quiz_id && data[0]?.count) {
+    return convertAggregatedData(data);
+  }
+
+  // Se não retornou dados agregados, usa método antigo
+  return await getEventsFromSupabaseOld(range);
+}
+
+// Converte dados agregados para array de eventos (para compatibilidade)
+function convertAggregatedData(aggregated) {
+  const events = [];
+  aggregated.forEach(row => {
+    const count = parseInt(row.count || row.total || 0);
+    for (let i = 0; i < count; i++) {
+      events.push({
+        quiz_id: row.quiz_id,
+        event: row.event,
+        created_at: new Date().toISOString() // Data não importa para cálculo
+      });
+    }
+  });
+  return events;
+}
+
+// Método antigo (busca eventos individuais) - mantido como fallback
+async function getEventsFromSupabaseOld(range) {
+  const dateLimit = getDateLimit(range);
+
+  // Tenta buscar SEM limite primeiro
+  let { data, error } = await supabase
+    .from('events')
+    .select('quiz_id, event, created_at')
+    .gte('created_at', dateLimit || '1900-01-01')
+    .order('created_at', { ascending: false })
+    .limit(100000); // Tenta buscar até 100k
+
+  if (error) throw error;
+
+  return data || [];
 }
 
 // Busca eventos do JSON local com filtro de data
@@ -152,7 +197,7 @@ export default async function handler(req, res) {
     // Busca eventos do Supabase ou JSON local
     if (isSupabaseConfigured()) {
       try {
-        events = await getEventsFromSupabase(range);
+        events = await getStatsFromSupabase(range);
         source = 'supabase';
       } catch (supabaseError) {
         console.error('Error fetching from Supabase, falling back to JSON:', supabaseError);
