@@ -1,6 +1,14 @@
-# 📈 Painel UP - Sistema de Rastreamento de Conversão de Quizzes
+# 📈 Painel UP - Sistema de Rastreamento de Conversão de Quizzes v2.0
 
-Sistema completo e leve de rastreamento de conversão de quizzes (pressells) hospedado na Vercel, com backend em API Routes (Next.js), armazenamento simples em JSON local, e um painel `/dashboard` com estatísticas em tempo real.
+Sistema completo e leve de rastreamento de conversão de quizzes (pressells) hospedado na Vercel, com backend em API Routes (Next.js), **persistência de dados no Supabase**, **autenticação protegida**, **filtros de data** e **gráficos visuais** com estatísticas em tempo real.
+
+## 🆕 Novidades da v2.0
+
+- ✅ **Persistência Real**: Dados armazenados no Supabase (PostgreSQL)
+- ✅ **Autenticação**: Acesso protegido ao dashboard com senha (AUTH_TOKEN)
+- ✅ **Filtros de Data**: Visualize estatísticas dos últimos 7 dias, 30 dias ou todos
+- ✅ **Gráfico Visual**: Visualização de conversão com Recharts
+- ✅ **Compatibilidade**: Mantém suporte para JSON local como fallback
 
 ## 🚀 Deploy Rápido
 
@@ -18,14 +26,20 @@ Medimos a taxa de conversão por quiz — quantos usuários entram no quiz (**vi
 / (Next.js project)
 │
 ├── /pages/api/
-│   ├── track.js     → Recebe eventos "view" e "complete"
-│   └── stats.js     → Retorna estatísticas agrupadas
+│   ├── track.js     → Recebe eventos "view" e "complete" (Supabase)
+│   └── stats.js     → Retorna estatísticas agrupadas com filtros de data
 │
 ├── /pages/
 │   ├── index.js            → Página inicial (redireciona para dashboard)
-│   └── dashboard/index.js  → Painel visual (React + Tailwind + SWR)
+│   └── dashboard/index.js  → Painel visual com autenticação e filtros
 │
-├── /data/events.json → Armazenamento local
+├── /components/
+│   └── Chart.js     → Componente de gráfico (Recharts)
+│
+├── /lib/
+│   └── supabase.js  → Cliente Supabase
+│
+├── /data/events.json → Armazenamento local (fallback)
 │
 ├── /styles/globals.css → Estilos globais com Tailwind
 │
@@ -59,7 +73,17 @@ Recebe eventos de view e complete dos quizzes.
 
 ### 2. GET `/api/stats`
 
-Retorna estatísticas agrupadas por quiz.
+Retorna estatísticas agrupadas por quiz com suporte a filtros de data.
+
+**Query Parameters:**
+- `range` (opcional): `"7d"` (últimos 7 dias), `"30d"` (últimos 30 dias), ou `"all"` (todos)
+
+**Exemplos:**
+```bash
+GET /api/stats           # Todos os dados
+GET /api/stats?range=7d  # Últimos 7 dias
+GET /api/stats?range=30d # Últimos 30 dias
+```
 
 **Resposta:**
 ```json
@@ -73,14 +97,26 @@ Retorna estatísticas agrupadas por quiz.
 ]
 ```
 
-## 📊 Painel Dashboard
+## 📊 Painel Dashboard (v2.0)
 
 Acessível em `/dashboard`, o painel exibe:
 
-- ✅ Quiz ID
-- ✅ Views
-- ✅ Completes
-- ✅ Taxa de conversão (%)
+**🔒 Autenticação:**
+- Login protegido com senha (configurável via AUTH_TOKEN)
+- Sessão armazenada no localStorage
+- Botão de logout
+
+**📈 Visualizações:**
+- 📊 Gráfico de barras colorido com taxa de conversão por quiz
+- 📋 Tabela detalhada com Quiz ID, Views, Completes e Taxa
+- 🔢 Totalizadores (Total de Quizzes, Views e Completes)
+
+**⏱️ Filtros de Data:**
+- Últimos 7 dias
+- Últimos 30 dias
+- Todos os dados
+
+**✨ Recursos:**
 - ✅ Atualização automática a cada 5 segundos (SWR)
 - ✅ Layout responsivo (desktop + mobile)
 - ✅ Cores baseadas na taxa de conversão:
@@ -88,12 +124,56 @@ Acessível em `/dashboard`, o painel exibe:
   - 🟡 Amarelo: ≥ 25%
   - 🔴 Vermelho: < 25%
 
+## 🗄️ Configuração do Supabase
+
+### 1. Criar Projeto no Supabase
+
+1. Acesse [supabase.com](https://supabase.com) e crie uma conta
+2. Clique em "New Project"
+3. Preencha os dados do projeto e aguarde a criação
+
+### 2. Criar Tabela de Eventos
+
+No painel do Supabase, vá em **SQL Editor** e execute:
+
+```sql
+create table if not exists events (
+  id uuid primary key default uuid_generate_v4(),
+  quiz_id text not null,
+  event text not null check (event in ('view','complete')),
+  created_at timestamp with time zone default now(),
+  ip text
+);
+
+-- Criar índices para melhor performance
+create index idx_quiz_id on events(quiz_id);
+create index idx_event on events(event);
+create index idx_created_at on events(created_at);
+```
+
+### 3. Obter Credenciais
+
+1. Vá em **Settings** → **API**
+2. Copie a **Project URL** (SUPABASE_URL)
+3. Copie a **anon/public key** (SUPABASE_KEY)
+
+### 4. Configurar Variáveis de Ambiente
+
+Crie um arquivo `.env.local` na raiz do projeto:
+
+```env
+SUPABASE_URL=sua-url-do-supabase
+SUPABASE_KEY=sua-chave-anon
+AUTH_TOKEN=suasenhasecreta123
+```
+
 ## 🔧 Instalação Local
 
 ### Pré-requisitos
 
 - Node.js 18+
 - npm ou yarn
+- Conta no Supabase (opcional, mas recomendado)
 
 ### Passos
 
@@ -119,9 +199,13 @@ npm run dev
 2. Acesse [vercel.com](https://vercel.com)
 3. Clique em "New Project"
 4. Importe o repositório
-5. Configure as variáveis de ambiente (opcional):
-   - `AUTH_TOKEN`: Token de autenticação (se implementar)
+5. **Configure as variáveis de ambiente:**
+   - `SUPABASE_URL`: URL do seu projeto Supabase
+   - `SUPABASE_KEY`: Chave anon/public do Supabase
+   - `AUTH_TOKEN`: Senha para acessar o dashboard
 6. Clique em "Deploy"
+
+> **Importante:** As variáveis de ambiente são obrigatórias para a v2.0 funcionar corretamente com o Supabase.
 
 ### Método 2: Via CLI
 
@@ -136,20 +220,33 @@ vercel
 vercel --prod
 ```
 
-## 🔒 Variáveis de Ambiente (Opcional)
+## 🔒 Variáveis de Ambiente
 
-Crie um arquivo `.env.local` para desenvolvimento:
+### Obrigatórias (v2.0):
 
 ```env
-# Opcional: Token de autenticação para APIs
-AUTH_TOKEN=minhasenha123
-
-# Opcional: Configuração do Supabase (para migração futura)
+# URL do projeto Supabase
 SUPABASE_URL=https://xxxxx.supabase.co
+
+# Chave pública (anon) do Supabase
 SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR...
+
+# Senha de acesso ao dashboard
+AUTH_TOKEN=minhasenha123
 ```
 
-> **Nota:** O sistema funciona sem variáveis de ambiente. Elas são apenas para recursos opcionais futuros.
+### Como configurar:
+
+**Local (desenvolvimento):**
+- Crie `.env.local` na raiz do projeto
+- Adicione as variáveis acima
+
+**Vercel (produção):**
+- Vá em **Settings** → **Environment Variables**
+- Adicione cada variável individualmente
+- Aplique para todos os ambientes (Production, Preview, Development)
+
+> **Nota:** Se as variáveis do Supabase não estiverem configuradas, o sistema usará JSON local como fallback (não persistente).
 
 ## 💻 Integração com Quizzes (Script Cloudflare)
 
@@ -222,51 +319,31 @@ const btn = document.querySelector('[data-action="complete"]');
 - ✅ Painel em tempo real (atualização a cada 5s)
 - ✅ Impacto no carregamento do quiz < 0.05s
 
-## 📈 Estrutura de Dados
+## 📈 Estrutura de Dados (Supabase)
 
-Os eventos são armazenados em `data/events.json`:
+Os eventos são armazenados na tabela `events` do Supabase:
 
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| id | uuid | Identificador único (gerado automaticamente) |
+| quiz_id | text | ID do quiz (sigla) |
+| event | text | Tipo de evento: 'view' ou 'complete' |
+| created_at | timestamp | Data/hora do evento (gerada automaticamente) |
+| ip | text | Endereço IP do visitante |
+
+**Exemplo de registro:**
 ```json
 {
-  "events": [
-    {
-      "event": "view",
-      "quizId": "abc",
-      "timestamp": "2024-01-15T10:30:00.000Z",
-      "ip": "192.168.1.1"
-    },
-    {
-      "event": "complete",
-      "quizId": "abc",
-      "timestamp": "2024-01-15T10:32:30.000Z",
-      "ip": "192.168.1.1"
-    }
-  ]
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "quiz_id": "abc",
+  "event": "view",
+  "created_at": "2024-01-15T10:30:00.000Z",
+  "ip": "192.168.1.1"
 }
 ```
 
-## 🔄 Migração para Supabase (Futuro)
-
-O sistema está pronto para migrar de JSON local para Supabase quando necessário:
-
-1. Crie um projeto no [Supabase](https://supabase.com)
-2. Crie a tabela `events`:
-
-```sql
-CREATE TABLE events (
-  id BIGSERIAL PRIMARY KEY,
-  event VARCHAR(20) NOT NULL,
-  quiz_id VARCHAR(50) NOT NULL,
-  timestamp TIMESTAMPTZ DEFAULT NOW(),
-  ip VARCHAR(50)
-);
-
-CREATE INDEX idx_quiz_id ON events(quiz_id);
-CREATE INDEX idx_event ON events(event);
-```
-
-3. Configure as variáveis de ambiente
-4. Atualize os endpoints para usar o cliente Supabase
+**Fallback (JSON local):**
+Se o Supabase não estiver configurado, os eventos são salvos em `data/events.json` (não persistente na Vercel).
 
 ## 🧪 Testando Localmente
 
@@ -297,23 +374,41 @@ npm run start  # Servidor de produção
 npm run lint   # Verificar código
 ```
 
-## 🛠️ Tecnologias Utilizadas
+## 🛠️ Tecnologias Utilizadas (v2.0)
 
 - **Next.js 14** - Framework React com API Routes
 - **React 18** - Biblioteca JavaScript para UI
 - **Tailwind CSS 3** - Framework CSS utilitário
 - **SWR** - React Hooks para data fetching
+- **Supabase** - Banco de dados PostgreSQL (BaaS)
+- **Recharts** - Biblioteca de gráficos para React
 - **Node.js** - Runtime JavaScript
 - **Vercel** - Plataforma de deploy
 
-## ✅ Critérios de Sucesso
+## ✅ Critérios de Sucesso (v2.0)
 
+**Backend:**
+- ✅ Eventos gravados e persistidos no Supabase
+- ✅ API `/api/track` funcional e rápida
+- ✅ API `/api/stats` com filtros de data (7d, 30d, all)
+- ✅ Fallback para JSON local se Supabase não configurado
+
+**Frontend:**
 - ✅ Painel `/dashboard` acessível e funcional
-- ✅ Eventos gravados corretamente via `/api/track`
-- ✅ Estatísticas corretas e atualizadas via `/api/stats`
+- ✅ Autenticação protegida por senha (AUTH_TOKEN)
+- ✅ Gráfico de conversão visual e responsivo
+- ✅ Filtros de data funcionando corretamente
+- ✅ Atualização automática a cada 5 segundos
+
+**Performance:**
 - ✅ Nenhum impacto perceptível no quiz
+- ✅ Tempo de resposta das APIs < 200ms
+- ✅ Dashboard carrega em < 1s
+
+**Deploy:**
 - ✅ Projeto pronto para versionamento e escalabilidade
 - ✅ Deploy automático na Vercel
+- ✅ Variáveis de ambiente configuradas corretamente
 
 ## 📞 Suporte
 

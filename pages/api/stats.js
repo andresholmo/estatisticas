@@ -1,10 +1,11 @@
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import fs from 'fs';
 import path from 'path';
 
-// Caminho para o arquivo de eventos
+// Caminho para o arquivo de eventos (fallback)
 const eventsFile = path.join(process.cwd(), 'data', 'events.json');
 
-// Função para garantir que o arquivo existe
+// Função para garantir que o arquivo existe (fallback)
 function ensureDataFile() {
   const dataDir = path.join(process.cwd(), 'data');
 
@@ -17,12 +18,73 @@ function ensureDataFile() {
   }
 }
 
+// Função para calcular a data limite baseada no range
+function getDateLimit(range) {
+  if (!range || range === 'all') {
+    return null;
+  }
+
+  const now = new Date();
+
+  if (range === '7d') {
+    now.setDate(now.getDate() - 7);
+  } else if (range === '30d') {
+    now.setDate(now.getDate() - 30);
+  } else {
+    return null;
+  }
+
+  return now.toISOString();
+}
+
+// Busca eventos do Supabase com filtro de data
+async function getEventsFromSupabase(range) {
+  let query = supabase
+    .from('events')
+    .select('quiz_id, event, created_at');
+
+  const dateLimit = getDateLimit(range);
+  if (dateLimit) {
+    query = query.gte('created_at', dateLimit);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}
+
+// Busca eventos do JSON local com filtro de data
+function getEventsFromJSON(range) {
+  ensureDataFile();
+
+  const fileContent = fs.readFileSync(eventsFile, 'utf8');
+  const data = JSON.parse(fileContent);
+  let events = data.events || [];
+
+  const dateLimit = getDateLimit(range);
+  if (dateLimit) {
+    events = events.filter(e => {
+      const eventDate = new Date(e.timestamp || e.created_at);
+      return eventDate >= new Date(dateLimit);
+    });
+  }
+
+  return events;
+}
+
 // Função para calcular estatísticas
 function calculateStats(events) {
   const stats = {};
 
   // Agrupa eventos por quizId
-  events.forEach(({ event, quizId }) => {
+  events.forEach((item) => {
+    const event = item.event;
+    const quizId = item.quiz_id || item.quizId;
+
     if (!stats[quizId]) {
       stats[quizId] = { views: 0, completes: 0 };
     }
@@ -56,15 +118,20 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Garante que o arquivo existe
-    ensureDataFile();
+    // Pega o range do query string (7d, 30d, ou all)
+    const { range } = req.query;
 
-    // Lê os eventos
-    const fileContent = fs.readFileSync(eventsFile, 'utf8');
-    const data = JSON.parse(fileContent);
+    let events;
+
+    // Busca eventos do Supabase ou JSON local
+    if (isSupabaseConfigured()) {
+      events = await getEventsFromSupabase(range);
+    } else {
+      events = getEventsFromJSON(range);
+    }
 
     // Calcula estatísticas
-    const stats = calculateStats(data.events || []);
+    const stats = calculateStats(events);
 
     // Retorna estatísticas
     return res.status(200).json(stats);

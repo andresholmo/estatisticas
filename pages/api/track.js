@@ -1,19 +1,18 @@
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import fs from 'fs';
 import path from 'path';
 
-// Caminho para o arquivo de eventos
+// Caminho para o arquivo de eventos (fallback)
 const eventsFile = path.join(process.cwd(), 'data', 'events.json');
 
-// Função para garantir que o diretório e arquivo existam
+// Função para garantir que o diretório e arquivo existam (fallback)
 function ensureDataFile() {
   const dataDir = path.join(process.cwd(), 'data');
 
-  // Cria diretório se não existir
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  // Cria arquivo se não existir
   if (!fs.existsSync(eventsFile)) {
     fs.writeFileSync(eventsFile, JSON.stringify({ events: [] }, null, 2));
   }
@@ -24,6 +23,41 @@ function getClientIp(req) {
   const forwarded = req.headers['x-forwarded-for'];
   const ip = forwarded ? forwarded.split(',')[0] : req.socket.remoteAddress;
   return ip || 'unknown';
+}
+
+// Salva evento no Supabase
+async function saveToSupabase(event, quizId, ip) {
+  const { error } = await supabase
+    .from('events')
+    .insert([
+      {
+        quiz_id: quizId,
+        event: event,
+        ip: ip,
+      }
+    ]);
+
+  if (error) {
+    throw error;
+  }
+}
+
+// Salva evento no JSON local (fallback)
+function saveToJSON(event, quizId, ip) {
+  ensureDataFile();
+
+  const fileContent = fs.readFileSync(eventsFile, 'utf8');
+  const data = JSON.parse(fileContent);
+
+  const newEvent = {
+    event,
+    quizId,
+    timestamp: new Date().toISOString(),
+    ip
+  };
+
+  data.events.push(newEvent);
+  fs.writeFileSync(eventsFile, JSON.stringify(data, null, 2));
 }
 
 export default async function handler(req, res) {
@@ -44,25 +78,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid event type' });
     }
 
-    // Garante que o arquivo existe
-    ensureDataFile();
+    const ip = getClientIp(req);
 
-    // Lê os eventos existentes
-    const fileContent = fs.readFileSync(eventsFile, 'utf8');
-    const data = JSON.parse(fileContent);
-
-    // Adiciona novo evento
-    const newEvent = {
-      event,
-      quizId,
-      timestamp: new Date().toISOString(),
-      ip: getClientIp(req)
-    };
-
-    data.events.push(newEvent);
-
-    // Salva de volta no arquivo
-    fs.writeFileSync(eventsFile, JSON.stringify(data, null, 2));
+    // Tenta salvar no Supabase, senão usa JSON local
+    if (isSupabaseConfigured()) {
+      await saveToSupabase(event, quizId, ip);
+    } else {
+      saveToJSON(event, quizId, ip);
+    }
 
     // Resposta rápida
     return res.status(200).json({ ok: true });
