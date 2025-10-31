@@ -1,20 +1,194 @@
+import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import Head from 'next/head';
+import ConversionChart from '../../components/Chart';
 
 // Fetcher para SWR
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
 export default function Dashboard() {
-  // Atualiza a cada 5 segundos
-  const { data: stats, error, isLoading } = useSWR('/api/stats', fetcher, {
-    refreshInterval: 5000,
-    revalidateOnFocus: true,
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [range, setRange] = useState('all');
+
+  // Verifica autenticação no localStorage
+  useEffect(() => {
+    const verifyAuth = async () => {
+      const authToken = localStorage.getItem('authToken');
+
+      if (authToken) {
+        try {
+          const response = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: authToken, action: 'verify' })
+          });
+
+          if (response.ok) {
+            setIsAuthenticated(true);
+          } else {
+            // Token inválido ou expirado
+            localStorage.removeItem('authToken');
+            setIsAuthenticated(false);
+          }
+        } catch (error) {
+          console.error('Erro ao verificar autenticação:', error);
+          localStorage.removeItem('authToken');
+          setIsAuthenticated(false);
+        }
+      }
+
+      setIsCheckingAuth(false);
+    };
+
+    verifyAuth();
+  }, []);
+
+  // Atualiza a cada 5 segundos com filtro de data
+  const { data: stats, error, isLoading } = useSWR(
+    isAuthenticated ? `/api/stats?range=${range}` : null,
+    fetcher,
+    {
+      refreshInterval: 5000,
+      revalidateOnFocus: true,
+    }
+  );
+
+  // Função de login com validação real
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setIsLoggingIn(true);
+
+    const passwordValue = password.trim();
+
+    if (!passwordValue) {
+      setAuthError('Por favor, insira uma senha');
+      setIsLoggingIn(false);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordValue, action: 'login' })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Salva o token retornado pela API
+        localStorage.setItem('authToken', data.token);
+        setIsAuthenticated(true);
+        setAuthError('');
+        setPassword('');
+      } else {
+        setAuthError(data.error || 'Senha incorreta');
+      }
+    } catch (error) {
+      console.error('Erro ao fazer login:', error);
+      setAuthError('Erro ao conectar com o servidor. Tente novamente.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Função de logout
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    setIsAuthenticated(false);
+    setPassword('');
+  };
+
+  // Loading enquanto verifica autenticação
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          <p className="text-gray-600 mt-4">Verificando autenticação...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Tela de login
+  if (!isAuthenticated) {
+    return (
+      <>
+        <Head>
+          <title>Login - Dashboard</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+        </Head>
+
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center py-8 px-4">
+          <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+            <div className="text-center mb-8">
+              <h1 className="text-3xl font-bold text-gray-800 flex items-center justify-center gap-3">
+                <span className="text-4xl">🔒</span>
+                Dashboard
+              </h1>
+              <p className="text-gray-600 mt-2">
+                Sistema de rastreamento de conversão
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                  Senha de acesso
+                </label>
+                <input
+                  type="password"
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoggingIn}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  placeholder="Digite a senha"
+                  autoFocus
+                />
+              </div>
+
+              {authError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-red-600 text-sm">{authError}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors font-semibold disabled:bg-indigo-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isLoggingIn ? (
+                  <>
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Verificando...
+                  </>
+                ) : (
+                  'Entrar'
+                )}
+              </button>
+            </form>
+
+            <p className="text-gray-500 text-xs mt-6 text-center">
+              Configure AUTH_TOKEN nas variáveis de ambiente da Vercel
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
       <Head>
-        <title>Dashboard - Conversões de Quizzes</title>
+        <title>Dashboard - Conversões de Quizzes v2.0</title>
         <meta name="description" content="Painel de estatísticas de quizzes" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
@@ -23,14 +197,64 @@ export default function Dashboard() {
         <div className="max-w-6xl mx-auto">
           {/* Cabeçalho */}
           <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-              <span className="text-4xl">📈</span>
-              Conversões de Quizzes
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Estatísticas em tempo real - Atualização automática a cada 5 segundos
-            </p>
+            <div className="flex justify-between items-start">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+                  <span className="text-4xl">📈</span>
+                  Conversões de Quizzes
+                  <span className="text-sm bg-indigo-100 text-indigo-800 px-2 py-1 rounded">v2.0</span>
+                </h1>
+                <p className="text-gray-600 mt-2">
+                  Estatísticas em tempo real - Atualização automática a cada 5 segundos
+                </p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="text-sm text-gray-600 hover:text-gray-900 underline"
+              >
+                Sair
+              </button>
+            </div>
+
+            {/* Filtros de data */}
+            <div className="mt-6 flex gap-2 flex-wrap">
+              <button
+                onClick={() => setRange('7d')}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  range === '7d'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Últimos 7 dias
+              </button>
+              <button
+                onClick={() => setRange('30d')}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  range === '30d'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Últimos 30 dias
+              </button>
+              <button
+                onClick={() => setRange('all')}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  range === 'all'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Todos
+              </button>
+            </div>
           </div>
+
+          {/* Gráfico */}
+          {!isLoading && !error && stats && stats.length > 0 && (
+            <ConversionChart stats={stats} />
+          )}
 
           {/* Conteúdo */}
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
