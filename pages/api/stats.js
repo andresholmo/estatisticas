@@ -37,83 +37,37 @@ function getDateLimit(range) {
   return now.toISOString();
 }
 
-// Busca estatísticas agregadas direto do Supabase (sem buscar eventos individuais)
-async function getStatsFromSupabase(range) {
+// Busca eventos do Supabase com filtro de data
+// NOTA: Supabase JS client tem limite de ~1000-10000 linhas
+// Para mais que isso, precisa usar SQL function (ver SUPABASE_SQL_FUNCTION.md)
+async function getEventsFromSupabase(range) {
   const dateLimit = getDateLimit(range);
 
-  // SQL query que faz agregação no banco (muito mais eficiente!)
-  let query = `
-    SELECT
-      quiz_id,
-      event,
-      COUNT(*) as count
-    FROM events
-  `;
+  // Monta a query
+  let query = supabase
+    .from('events')
+    .select('quiz_id, event, created_at');
 
+  // Aplica filtro de data se houver
   if (dateLimit) {
-    query += ` WHERE created_at >= '${dateLimit}'`;
+    query = query.gte('created_at', dateLimit);
   }
 
-  query += `
-    GROUP BY quiz_id, event
-    ORDER BY quiz_id
-  `;
+  // Ordena por data (mais recentes primeiro)
+  query = query.order('created_at', { ascending: false });
 
-  const { data, error } = await supabase.rpc('get_stats', {
-    date_limit: dateLimit
-  }).catch(async () => {
-    // Fallback: Se RPC não existir, usa query direta
-    const { data: rawData, error: rawError } = await supabase
-      .from('events')
-      .select('quiz_id, event, created_at');
+  // Tenta buscar até 100k eventos (máximo que o Supabase permite)
+  // Se tiver mais que 100k, só vai pegar os 100k mais recentes
+  query = query.limit(100000);
 
-    if (rawError) throw rawError;
-    return { data: rawData, error: null };
-  });
+  const { data, error } = await query;
 
   if (error) {
-    // Se falhar, usa método antigo (busca todos os eventos)
-    return await getEventsFromSupabaseOld(range);
+    console.error('Supabase query error:', error);
+    throw error;
   }
 
-  // Se retornou dados agregados, converte para formato esperado
-  if (data && Array.isArray(data) && data[0]?.quiz_id && data[0]?.count) {
-    return convertAggregatedData(data);
-  }
-
-  // Se não retornou dados agregados, usa método antigo
-  return await getEventsFromSupabaseOld(range);
-}
-
-// Converte dados agregados para array de eventos (para compatibilidade)
-function convertAggregatedData(aggregated) {
-  const events = [];
-  aggregated.forEach(row => {
-    const count = parseInt(row.count || row.total || 0);
-    for (let i = 0; i < count; i++) {
-      events.push({
-        quiz_id: row.quiz_id,
-        event: row.event,
-        created_at: new Date().toISOString() // Data não importa para cálculo
-      });
-    }
-  });
-  return events;
-}
-
-// Método antigo (busca eventos individuais) - mantido como fallback
-async function getEventsFromSupabaseOld(range) {
-  const dateLimit = getDateLimit(range);
-
-  // Tenta buscar SEM limite primeiro
-  let { data, error } = await supabase
-    .from('events')
-    .select('quiz_id, event, created_at')
-    .gte('created_at', dateLimit || '1900-01-01')
-    .order('created_at', { ascending: false })
-    .limit(100000); // Tenta buscar até 100k
-
-  if (error) throw error;
+  console.log(`[Stats] Fetched ${data?.length || 0} events from Supabase`);
 
   return data || [];
 }
@@ -197,16 +151,19 @@ export default async function handler(req, res) {
     // Busca eventos do Supabase ou JSON local
     if (isSupabaseConfigured()) {
       try {
-        events = await getStatsFromSupabase(range);
+        events = await getEventsFromSupabase(range);
         source = 'supabase';
+        console.log(`[Stats] Source: supabase, Events: ${events.length}`);
       } catch (supabaseError) {
         console.error('Error fetching from Supabase, falling back to JSON:', supabaseError);
         events = getEventsFromJSON(range);
         source = 'json-fallback';
+        console.log(`[Stats] Source: json-fallback, Events: ${events.length}`);
       }
     } else {
       events = getEventsFromJSON(range);
       source = 'json';
+      console.log(`[Stats] Source: json, Events: ${events.length}`);
     }
 
     // Calcula estatísticas
