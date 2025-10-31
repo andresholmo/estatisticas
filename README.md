@@ -220,6 +220,35 @@ vercel
 vercel --prod
 ```
 
+## 🔒 Autenticação
+
+O sistema possui autenticação real via endpoint `/api/auth` que valida a senha contra a variável de ambiente `AUTH_TOKEN`.
+
+### Como Funciona:
+
+1. **Login:** Usuário digita a senha no dashboard
+2. **Validação:** Sistema envia senha para `/api/auth` (action: login)
+3. **Token:** Se senha correta, API retorna token único (SHA-256 + timestamp)
+4. **Sessão:** Token é salvo no localStorage e expira em 24 horas
+5. **Verificação:** A cada acesso, sistema valida token via `/api/auth` (action: verify)
+
+### Segurança:
+
+- ✅ Senha nunca é armazenada no cliente (apenas token)
+- ✅ Validação server-side contra AUTH_TOKEN
+- ✅ Token expira automaticamente em 24 horas
+- ✅ Verificação de autenticação a cada carregamento da página
+
+### Senha Padrão:
+
+A senha é configurada via variável de ambiente `AUTH_TOKEN`. Exemplo:
+
+```env
+AUTH_TOKEN=minhasenha123
+```
+
+> **Importante:** Se `AUTH_TOKEN` não estiver configurado, o sistema bloqueará o acesso ao dashboard com erro 503.
+
 ## 🔒 Variáveis de Ambiente
 
 ### Obrigatórias (v2.0):
@@ -231,8 +260,8 @@ SUPABASE_URL=https://xxxxx.supabase.co
 # Chave pública (anon) do Supabase
 SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR...
 
-# Senha de acesso ao dashboard
-AUTH_TOKEN=minhasenha123
+# Senha de acesso ao dashboard (OBRIGATÓRIA)
+AUTH_TOKEN=suasenhasecreta123
 ```
 
 ### Como configurar:
@@ -240,13 +269,23 @@ AUTH_TOKEN=minhasenha123
 **Local (desenvolvimento):**
 - Crie `.env.local` na raiz do projeto
 - Adicione as variáveis acima
+- Exemplo:
+
+```bash
+# .env.local
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_KEY=sua-chave-anon
+AUTH_TOKEN=senha123
+```
 
 **Vercel (produção):**
 - Vá em **Settings** → **Environment Variables**
 - Adicione cada variável individualmente
 - Aplique para todos os ambientes (Production, Preview, Development)
 
-> **Nota:** Se as variáveis do Supabase não estiverem configuradas, o sistema usará JSON local como fallback (não persistente).
+> **Notas:**
+> - Se `SUPABASE_URL` e `SUPABASE_KEY` não estiverem configuradas, o sistema usará JSON local como fallback (não persistente)
+> - Se `AUTH_TOKEN` não estiver configurado, o dashboard ficará inacessível (erro 503)
 
 ## 💻 Integração com Quizzes (Script Cloudflare)
 

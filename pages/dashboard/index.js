@@ -8,16 +8,43 @@ const fetcher = (url) => fetch(url).then((res) => res.json());
 
 export default function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [range, setRange] = useState('all');
 
   // Verifica autenticação no localStorage
   useEffect(() => {
-    const authToken = localStorage.getItem('authToken');
-    if (authToken) {
-      setIsAuthenticated(true);
-    }
+    const verifyAuth = async () => {
+      const authToken = localStorage.getItem('authToken');
+
+      if (authToken) {
+        try {
+          const response = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: authToken, action: 'verify' })
+          });
+
+          if (response.ok) {
+            setIsAuthenticated(true);
+          } else {
+            // Token inválido ou expirado
+            localStorage.removeItem('authToken');
+            setIsAuthenticated(false);
+          }
+        } catch (error) {
+          console.error('Erro ao verificar autenticação:', error);
+          localStorage.removeItem('authToken');
+          setIsAuthenticated(false);
+        }
+      }
+
+      setIsCheckingAuth(false);
+    };
+
+    verifyAuth();
   }, []);
 
   // Atualiza a cada 5 segundos com filtro de data
@@ -30,20 +57,43 @@ export default function Dashboard() {
     }
   );
 
-  // Função de login
-  const handleLogin = (e) => {
+  // Função de login com validação real
+  const handleLogin = async (e) => {
     e.preventDefault();
+    setAuthError('');
+    setIsLoggingIn(true);
 
-    // Se AUTH_TOKEN não está configurado, aceita qualquer senha
-    // Em produção, configure AUTH_TOKEN nas variáveis de ambiente
-    const validPassword = password.trim();
+    const passwordValue = password.trim();
 
-    if (validPassword) {
-      localStorage.setItem('authToken', validPassword);
-      setIsAuthenticated(true);
-      setAuthError('');
-    } else {
+    if (!passwordValue) {
       setAuthError('Por favor, insira uma senha');
+      setIsLoggingIn(false);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordValue, action: 'login' })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Salva o token retornado pela API
+        localStorage.setItem('authToken', data.token);
+        setIsAuthenticated(true);
+        setAuthError('');
+        setPassword('');
+      } else {
+        setAuthError(data.error || 'Senha incorreta');
+      }
+    } catch (error) {
+      console.error('Erro ao fazer login:', error);
+      setAuthError('Erro ao conectar com o servidor. Tente novamente.');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -53,6 +103,18 @@ export default function Dashboard() {
     setIsAuthenticated(false);
     setPassword('');
   };
+
+  // Loading enquanto verifica autenticação
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          <p className="text-gray-600 mt-4">Verificando autenticação...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Tela de login
   if (!isAuthenticated) {
@@ -85,21 +147,32 @@ export default function Dashboard() {
                   id="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  disabled={isLoggingIn}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   placeholder="Digite a senha"
                   autoFocus
                 />
               </div>
 
               {authError && (
-                <p className="text-red-600 text-sm">{authError}</p>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-red-600 text-sm">{authError}</p>
+                </div>
               )}
 
               <button
                 type="submit"
-                className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors font-semibold"
+                disabled={isLoggingIn}
+                className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors font-semibold disabled:bg-indigo-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Entrar
+                {isLoggingIn ? (
+                  <>
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Verificando...
+                  </>
+                ) : (
+                  'Entrar'
+                )}
               </button>
             </form>
 
