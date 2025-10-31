@@ -126,15 +126,32 @@ export default async function handler(req, res) {
 
     if (supabaseConfigured) {
       console.log('💾 Tentando salvar no Supabase...');
-      await saveToSupabase(event, quizId, ip);
-      console.log('✅ Salvo no Supabase com sucesso');
+      try {
+        const result = await saveToSupabase(event, quizId, ip);
+        console.log('✅ Salvo no Supabase com sucesso:', result);
+        return res.status(200).json({
+          ok: true,
+          saved: 'supabase',
+          event,
+          quizId,
+          timestamp: new Date().toISOString()
+        });
+      } catch (saveError) {
+        console.error('❌ ERRO ao salvar no Supabase:', saveError);
+        // Retorna erro mas com status 200 para não bloquear o tracking
+        return res.status(200).json({
+          ok: false,
+          saved: 'error',
+          error: saveError.message,
+          event,
+          quizId
+        });
+      }
     } else {
       console.log('⚠️  Supabase não configurado, usando fallback');
       saveToJSON(event, quizId, ip);
+      return res.status(200).json({ ok: true, saved: 'json', event, quizId });
     }
-
-    // Resposta rápida
-    return res.status(200).json({ ok: true, saved: supabaseConfigured ? 'supabase' : 'json' });
 
   } catch (error) {
     console.error('Error tracking event:', error);
