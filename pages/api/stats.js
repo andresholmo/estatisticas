@@ -37,24 +37,40 @@ function getDateLimit(range) {
   return now.toISOString();
 }
 
-// Busca eventos do Supabase com filtro de data
+// Busca eventos do Supabase com filtro de data (com paginação)
 async function getEventsFromSupabase(range) {
-  let query = supabase
-    .from('events')
-    .select('quiz_id, event, created_at');
+  const pageSize = 10000; // Busca 10k por vez
+  let allEvents = [];
+  let page = 0;
+  let hasMore = true;
 
-  const dateLimit = getDateLimit(range);
-  if (dateLimit) {
-    query = query.gte('created_at', dateLimit);
+  while (hasMore) {
+    let query = supabase
+      .from('events')
+      .select('quiz_id, event, created_at')
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+
+    const dateLimit = getDateLimit(range);
+    if (dateLimit) {
+      query = query.gte('created_at', dateLimit);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    if (data && data.length > 0) {
+      allEvents = allEvents.concat(data);
+      hasMore = data.length === pageSize; // Se retornou menos que pageSize, acabou
+      page++;
+    } else {
+      hasMore = false;
+    }
   }
 
-  const { data, error } = await query;
-
-  if (error) {
-    throw error;
-  }
-
-  return data || [];
+  return allEvents;
 }
 
 // Busca eventos do JSON local com filtro de data
