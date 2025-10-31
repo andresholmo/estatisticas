@@ -128,25 +128,48 @@ export default async function handler(req, res) {
 
   try {
     // Pega o range do query string (7d, 30d, ou all)
-    const { range } = req.query;
+    const { range, debug } = req.query;
 
     let events;
+    let source = 'unknown';
 
     // Busca eventos do Supabase ou JSON local
     if (isSupabaseConfigured()) {
-      events = await getEventsFromSupabase(range);
+      try {
+        events = await getEventsFromSupabase(range);
+        source = 'supabase';
+      } catch (supabaseError) {
+        console.error('Error fetching from Supabase, falling back to JSON:', supabaseError);
+        events = getEventsFromJSON(range);
+        source = 'json-fallback';
+      }
     } else {
       events = getEventsFromJSON(range);
+      source = 'json';
     }
 
     // Calcula estatísticas
     const stats = calculateStats(events);
+
+    // Se debug=true, retorna informações adicionais
+    if (debug === 'true') {
+      return res.status(200).json({
+        source: source,
+        totalEvents: events.length,
+        supabaseConfigured: isSupabaseConfigured(),
+        range: range || 'all',
+        stats: stats
+      });
+    }
 
     // Retorna estatísticas
     return res.status(200).json(stats);
 
   } catch (error) {
     console.error('Error getting stats:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
   }
 }
