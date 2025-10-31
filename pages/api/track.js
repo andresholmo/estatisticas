@@ -89,18 +89,40 @@ export default async function handler(req, res) {
 
     const ip = getClientIp(req);
 
+    let saved = 'unknown';
+    let errorDetails = null;
+
     // Tenta salvar no Supabase, senão usa JSON local
     if (isSupabaseConfigured()) {
-      await saveToSupabase(event, quizId, ip);
+      try {
+        await saveToSupabase(event, quizId, ip);
+        saved = 'supabase';
+      } catch (supabaseError) {
+        console.error('Supabase error, falling back to JSON:', supabaseError);
+        errorDetails = supabaseError.message;
+        saveToJSON(event, quizId, ip);
+        saved = 'json-fallback';
+      }
     } else {
       saveToJSON(event, quizId, ip);
+      saved = 'json';
     }
 
-    // Resposta rápida
-    return res.status(200).json({ ok: true });
+    // Resposta com informação de onde foi salvo
+    return res.status(200).json({
+      ok: true,
+      saved: saved,
+      event: event,
+      quizId: quizId,
+      timestamp: new Date().toISOString(),
+      error: errorDetails
+    });
 
   } catch (error) {
     console.error('Error tracking event:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
   }
 }
