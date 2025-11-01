@@ -45,8 +45,13 @@ Sistema completo e leve de rastreamento de conversão de quizzes (pressells) hos
 
 ---
 
-## 🆕 Novidades da v3.0 (31/10/2024)
+## 🆕 Novidades da v3.0 (01/11/2024)
 
+- ✅ **Multi-Site Support**: Rastreamento e filtragem por domínio/site
+- ✅ **Filtros Temporais**: Agregação por hora, dia ou semana + período configurável
+- ✅ **SQL Functions v2**: Funções otimizadas no PostgreSQL para performance
+- ✅ **Dashboard Aprimorado**: Filtros visuais (site, período, agregação)
+- ✅ **Auto-Refresh 30s**: Atualização automática a cada 30 segundos
 - ✅ **Bug Crítico Corrigido**: Script v2.0 não capturava eventos (race condition)
 - ✅ **100% de Captura**: Funciona independente do momento de injeção do script
 - ✅ **Worker Completo**: Arquivo `worker.js` pronto para Cloudflare
@@ -101,54 +106,91 @@ Medimos a taxa de conversão por quiz — quantos usuários entram no quiz (**vi
 
 ### 1. POST `/api/track`
 
-Recebe eventos de view e complete dos quizzes.
+Recebe eventos de view e complete dos quizzes com suporte multi-site.
 
 **Payload:**
 ```json
 {
   "event": "view",
-  "quizId": "abc"
+  "quizId": "abc",
+  "site": "seriedrama.com"
 }
 ```
 
 **Parâmetros:**
-- `event`: `"view"` ou `"complete"`
-- `quizId`: Identificador único do quiz (sigla)
+- `event`: `"view"` ou `"complete"` (obrigatório)
+- `quizId`: Identificador único do quiz (obrigatório)
+- `site`: Domínio do site (opcional - será inferido dos headers se não fornecido)
 
 **Resposta:**
 ```json
 {
-  "ok": true
+  "ok": true,
+  "saved": "supabase",
+  "event": "view",
+  "quizId": "abc",
+  "site": "seriedrama.com",
+  "siteId": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2024-11-01T10:30:00.000Z"
 }
 ```
 
 ### 2. GET `/api/stats`
 
-Retorna estatísticas agrupadas por quiz com suporte a filtros de data.
+Retorna estatísticas agrupadas por quiz e site com filtros temporais avançados.
 
 **Query Parameters:**
-- `range` (opcional): `"7d"` (últimos 7 dias), `"30d"` (últimos 30 dias), ou `"all"` (todos)
+- `range` (opcional): `"hour"`, `"day"`, ou `"week"` - Agregação temporal (padrão: `"day"`)
+- `site` (opcional): Domínio do site para filtrar (ex: `"seriedrama.com"`)
+- `days` (opcional): Número de dias para incluir (padrão: `30`)
+- `distinct` (opcional): Se `"site"`, retorna lista de sites disponíveis
+- `debug` (opcional): Se `"true"`, retorna informações de debug
 
 **Exemplos:**
 ```bash
-GET /api/stats           # Todos os dados
-GET /api/stats?range=7d  # Últimos 7 dias
-GET /api/stats?range=30d # Últimos 30 dias
+GET /api/stats                                    # Últimos 30 dias, agregação diária, todos os sites
+GET /api/stats?range=hour&days=1                  # Últimas 24 horas, agregação por hora
+GET /api/stats?site=seriedrama.com&days=7         # Últimos 7 dias, apenas seriedrama.com
+GET /api/stats?range=week&days=90                 # Últimos 90 dias, agregação semanal
+GET /api/stats?distinct=site                      # Lista de sites disponíveis
 ```
 
-**Resposta:**
+**Resposta Normal:**
 ```json
-[
-  {
-    "quizId": "abc",
-    "views": 120,
-    "completes": 80,
-    "conversionRate": "66.7%"
-  }
-]
+{
+  "range": "day",
+  "site": null,
+  "days": 30,
+  "bucketed": [
+    {
+      "bucket": "2024-11-01T00:00:00.000Z",
+      "site": "seriedrama.com",
+      "quizId": "abc",
+      "views": 120,
+      "completes": 80,
+      "conversionRate": "66.7%"
+    }
+  ],
+  "totals": [
+    {
+      "site": "seriedrama.com",
+      "quizId": "abc",
+      "views": 3500,
+      "completes": 2100,
+      "conversionRate": "60.0%"
+    }
+  ]
+}
 ```
 
-## 📊 Painel Dashboard (v2.0)
+**Resposta com `distinct=site`:**
+```json
+{
+  "sites": ["seriedrama.com", "outrosite.com"]
+}
+```
+
+## 📊 Painel Dashboard (v3.0)
 
 Acessível em `/dashboard`, o painel exibe:
 
@@ -158,18 +200,19 @@ Acessível em `/dashboard`, o painel exibe:
 - Botão de logout
 
 **📈 Visualizações:**
-- 📊 Gráfico de barras colorido com taxa de conversão por quiz
-- 📋 Tabela detalhada com Quiz ID, Views, Completes e Taxa
+- 📊 Gráfico de barras colorido com taxa de conversão por quiz e site
+- 📋 Tabela detalhada com Site, Quiz ID, Views, Completes e Taxa
 - 🔢 Totalizadores (Total de Quizzes, Views e Completes)
 
-**⏱️ Filtros de Data:**
-- Últimos 7 dias
-- Últimos 30 dias
-- Todos os dados
+**🎛️ Filtros Multi-Site (v3.0):**
+- **Site:** Selecione um site específico ou visualize todos
+- **Período:** Últimos 7, 30 ou 90 dias
+- **Agregação:** Visualização por hora, dia ou semana
 
 **✨ Recursos:**
-- ✅ Atualização automática a cada 5 segundos (SWR)
+- ✅ Atualização automática a cada 30 segundos (SWR)
 - ✅ Layout responsivo (desktop + mobile)
+- ✅ Filtros dinâmicos com query params
 - ✅ Cores baseadas na taxa de conversão:
   - 🟢 Verde: ≥ 50%
   - 🟡 Amarelo: ≥ 25%
@@ -183,23 +226,39 @@ Acessível em `/dashboard`, o painel exibe:
 2. Clique em "New Project"
 3. Preencha os dados do projeto e aguarde a criação
 
-### 2. Criar Tabela de Eventos
+### 2. Executar SQL Migration v2 (Multi-Site)
 
-No painel do Supabase, vá em **SQL Editor** e execute:
+> **⚠️ IMPORTANTE:** Para a v3.0 funcionar, você DEVE executar o SQL completo do arquivo `SUPABASE_MIGRATION_V2.md`
+
+No painel do Supabase, vá em **SQL Editor** e execute **TODO o SQL** de `SUPABASE_MIGRATION_V2.md`.
+
+Esse arquivo contém:
+- ✅ Criação da tabela `sites`
+- ✅ Adição da coluna `site_id` na tabela `events`
+- ✅ Função `upsert_site()` para gerenciamento automático de sites
+- ✅ Função `get_quiz_stats_v2()` com filtros temporais
+- ✅ Função `get_quiz_totals_v2()` para agregações
+- ✅ Função `get_sites_list()` para listar sites disponíveis
+- ✅ Índices e permissões otimizadas
+
+**SQL resumido (veja arquivo completo para detalhes):**
 
 ```sql
-create table if not exists events (
-  id uuid primary key default uuid_generate_v4(),
-  quiz_id text not null,
-  event text not null check (event in ('view','complete')),
-  created_at timestamp with time zone default now(),
-  ip text
+-- Tabela de sites
+CREATE TABLE IF NOT EXISTS sites (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  domain text UNIQUE NOT NULL,
+  created_at timestamptz DEFAULT now()
 );
 
--- Criar índices para melhor performance
-create index idx_quiz_id on events(quiz_id);
-create index idx_event on events(event);
-create index idx_created_at on events(created_at);
+-- Adiciona site_id à tabela events
+ALTER TABLE events ADD COLUMN IF NOT EXISTS site_id uuid REFERENCES sites(id);
+
+-- Funções SQL v2 (veja SUPABASE_MIGRATION_V2.md para código completo)
+-- - upsert_site(p_domain)
+-- - get_quiz_stats_v2(p_range, p_site_domain, p_days)
+-- - get_quiz_totals_v2(p_site_domain, p_days)
+-- - get_sites_list()
 ```
 
 ### 3. Obter Credenciais
@@ -470,10 +529,13 @@ console.log('✅ Monitor ativado!');
 - ✅ Nenhuma requisição bloqueante
 - ✅ Fetch assíncrono sem await
 - ✅ APIs leves e sem dependências externas
-- ✅ Painel em tempo real (atualização a cada 5s)
+- ✅ Painel em tempo real (atualização a cada 30s)
+- ✅ SQL Functions otimizadas (agregação no banco)
 - ✅ Impacto no carregamento do quiz < 0.05s
 
 ## 📈 Estrutura de Dados (Supabase)
+
+### Tabela `events`
 
 Os eventos são armazenados na tabela `events` do Supabase:
 
@@ -482,8 +544,19 @@ Os eventos são armazenados na tabela `events` do Supabase:
 | id | uuid | Identificador único (gerado automaticamente) |
 | quiz_id | text | ID do quiz (sigla) |
 | event | text | Tipo de evento: 'view' ou 'complete' |
+| site_id | uuid | Referência para a tabela sites (FK) |
 | created_at | timestamp | Data/hora do evento (gerada automaticamente) |
 | ip | text | Endereço IP do visitante |
+
+### Tabela `sites`
+
+Armazena os sites/domínios rastreados:
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| id | uuid | Identificador único (gerado automaticamente) |
+| domain | text | Domínio do site (único) |
+| created_at | timestamp | Data de criação (gerada automaticamente) |
 
 **Exemplo de registro:**
 ```json
