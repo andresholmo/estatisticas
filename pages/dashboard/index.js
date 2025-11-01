@@ -432,6 +432,7 @@ export default function Dashboard() {
 
             {/* Filtros multi-site v2 (apenas aba Geral) */}
             {activeTab === 'general' && (
+              <>
               <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Filtro: Site */}
               <div>
@@ -593,6 +594,7 @@ export default function Dashboard() {
                 </>
               )}
             </div>
+            </>
             )}
 
             {/* Filtro simples: Site (apenas aba Tempo Real) */}
