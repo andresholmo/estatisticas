@@ -89,7 +89,13 @@ export default function Dashboard() {
       refreshWhenHidden: true, // Continua atualizando mesmo em aba inativa
       refreshWhenOffline: false,
       onSuccess: (data) => {
-        console.log('🔄 SWR: Dados atualizados', new Date().toLocaleTimeString('pt-BR'), data);
+        const totalViews = data?.totals?.reduce((sum, s) => sum + (s.views || 0), 0) || 0;
+        const totalCompletes = data?.totals?.reduce((sum, s) => sum + (s.completes || 0), 0) || 0;
+        console.log('🔄 SWR: Dados atualizados', new Date().toLocaleTimeString('pt-BR'));
+        console.log('   📊 Totals recebidos:', data?.totals?.length || 0, 'quizzes');
+        console.log('   👁️ Views:', totalViews.toLocaleString());
+        console.log('   ✅ Completes:', totalCompletes.toLocaleString());
+        console.log('   📦 Bucketed:', data?.bucketed?.length || 0, 'registros');
       },
       onError: (err) => {
         console.error('❌ SWR: Erro ao buscar dados', err);
@@ -102,12 +108,21 @@ export default function Dashboard() {
   const bucketed = statsResponse?.bucketed || [];
   const sites = sitesData?.sites || [];
 
+  // Calcula totais
+  const totalQuizzes = stats.length;
+  const totalViews = stats.reduce((sum, s) => sum + (s.views || 0), 0);
+  const totalCompletes = stats.reduce((sum, s) => sum + (s.completes || 0), 0);
+
   // Atualiza timestamp quando dados mudam
   useEffect(() => {
     if (statsResponse) {
       setLastUpdate(new Date());
+      console.log('🔁 Component: Re-renderizando com novos dados');
+      console.log('   📊 Quizzes exibidos:', totalQuizzes);
+      console.log('   👁️ Views exibidas:', totalViews.toLocaleString());
+      console.log('   ✅ Completes exibidas:', totalCompletes.toLocaleString());
     }
-  }, [statsResponse]);
+  }, [statsResponse, totalQuizzes, totalViews, totalCompletes]);
 
   // Função de login com validação real
   const handleLogin = async (e) => {
@@ -490,15 +505,15 @@ export default function Dashboard() {
                   <div className="flex flex-wrap gap-6 text-sm text-gray-600">
                     <div>
                       <span className="font-semibold text-gray-900">Total de Quizzes:</span>{' '}
-                      {stats.length}
+                      {totalQuizzes}
                     </div>
                     <div>
                       <span className="font-semibold text-gray-900">Total de Views:</span>{' '}
-                      {stats.reduce((sum, s) => sum + s.views, 0).toLocaleString()}
+                      {totalViews.toLocaleString()}
                     </div>
                     <div>
                       <span className="font-semibold text-gray-900">Total de Completes:</span>{' '}
-                      {stats.reduce((sum, s) => sum + s.completes, 0).toLocaleString()}
+                      {totalCompletes.toLocaleString()}
                     </div>
                   </div>
                 </div>
