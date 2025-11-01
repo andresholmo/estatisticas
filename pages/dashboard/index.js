@@ -21,6 +21,7 @@ export default function Dashboard() {
 
   // Sistema de abas (Geral / Tempo Real)
   const [activeTab, setActiveTab] = useState('general'); // 'general' ou 'realtime'
+  const [realtimeTick, setRealtimeTick] = useState(0); // Força recálculo da URL tempo real
 
   // Filtros de data/hora v3
   const [useCustomDates, setUseCustomDates] = useState(false);
@@ -61,6 +62,17 @@ export default function Dashboard() {
 
     verifyAuth();
   }, []);
+
+  // Atualiza o tick da aba Tempo Real a cada 10s para forçar recálculo da janela de 5 minutos
+  useEffect(() => {
+    if (activeTab === 'realtime') {
+      const interval = setInterval(() => {
+        setRealtimeTick(prev => prev + 1);
+      }, 10000); // 10 segundos
+
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
 
   // Busca lista de sites (sem refresh automático)
   const { data: sitesData } = useSWR(
@@ -132,7 +144,7 @@ export default function Dashboard() {
     const url = `/api/stats?${params.toString()}`;
     console.log('🔗 SWR: URL construída', url);
     return url;
-  }, [isAuthenticated, selectedRange, selectedSite, useCustomDates, startDate, startTime, endDate, endTime, selectedDays, activeTab]);
+  }, [isAuthenticated, selectedRange, selectedSite, useCustomDates, startDate, startTime, endDate, endTime, selectedDays, activeTab, realtimeTick]);
 
   const { data: statsResponse, error, isLoading, mutate } = useSWR(
     statsUrl,
