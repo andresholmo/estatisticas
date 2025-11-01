@@ -1,7 +1,7 @@
 {
   "name": "painelup",
-  "version": "2.0.0",
-  "description": "Sistema de rastreamento de conversão de quizzes",
+  "version": "3.0.0",
+  "description": "Sistema de rastreamento de conversão de quizzes com script v3.0 corrigido",
   "private": true,
   "scripts": {
     "dev": "next dev",

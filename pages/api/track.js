@@ -1,8 +1,8 @@
-import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { supabase, isSupabaseConfigured, getDomainFromReq } from '../../lib/supabase';
 import fs from 'fs';
 import path from 'path';
 
-// Caminho para o arquivo de eventos (fallback)
+// Caminho para o arquivo de eventos (fallback para dev)
 const eventsFile = path.join(process.cwd(), 'data', 'events.json');
 
 // Função para garantir que o diretório e arquivo existam (fallback)
@@ -25,8 +25,37 @@ function getClientIp(req) {
   return ip || 'unknown';
 }
 
-// Salva evento no Supabase
-async function saveToSupabase(event, quizId, ip) {
+// Upsert site e retorna site_id
+async function upsertSite(domain) {
+  try {
+    // Chama função SQL upsert_site
+    const { data, error } = await supabase.rpc('upsert_site', {
+      p_domain: domain
+    });
+
+    if (error) {
+      console.error('Error upserting site:', error);
+      throw error;
+    }
+
+    return data; // Retorna o UUID do site
+  } catch (error) {
+    console.error('Failed to upsert site:', error);
+    // Fallback: tenta inserir diretamente
+    const { data: siteData, error: insertError } = await supabase
+      .from('sites')
+      .upsert({ domain }, { onConflict: 'domain' })
+      .select('id')
+      .single();
+
+    if (insertError) throw insertError;
+
+    return siteData.id;
+  }
+}
+
+// Salva evento no Supabase com site_id
+async function saveToSupabase(event, quizId, ip, siteId) {
   const { error } = await supabase
     .from('events')
     .insert([
@@ -34,6 +63,7 @@ async function saveToSupabase(event, quizId, ip) {
         quiz_id: quizId,
         event: event,
         ip: ip,
+        site_id: siteId,
       }
     ]);
 
@@ -42,8 +72,8 @@ async function saveToSupabase(event, quizId, ip) {
   }
 }
 
-// Salva evento no JSON local (fallback)
-function saveToJSON(event, quizId, ip) {
+// Salva evento no JSON local (fallback para dev)
+function saveToJSON(event, quizId, ip, site) {
   ensureDataFile();
 
   const fileContent = fs.readFileSync(eventsFile, 'utf8');
@@ -52,6 +82,7 @@ function saveToJSON(event, quizId, ip) {
   const newEvent = {
     event,
     quizId,
+    site,
     timestamp: new Date().toISOString(),
     ip
   };
@@ -61,13 +92,13 @@ function saveToJSON(event, quizId, ip) {
 }
 
 export default async function handler(req, res) {
-  // Libera CORS para qualquer domínio (ou restrinja se quiser)
+  // Libera CORS para qualquer domínio
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end(); // resposta rápida para preflight
+    return res.status(200).end();
   }
 
   // Apenas POST é permitido
@@ -76,7 +107,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { event, quizId } = req.body;
+    const { event, quizId, site: bodySite } = req.body;
 
     // Validação básica
     if (!event || !quizId) {
@@ -87,20 +118,67 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid event type' });
     }
 
+    // Determina o site: usa body.site OU infere dos headers
+    const site = bodySite || getDomainFromReq(req);
+
     const ip = getClientIp(req);
 
-    // Tenta salvar no Supabase, senão usa JSON local
+    let saved = 'unknown';
+    let errorDetails = null;
+    let siteId = null;
+
+    // Tenta salvar no Supabase
     if (isSupabaseConfigured()) {
-      await saveToSupabase(event, quizId, ip);
+      try {
+        // 1. Upsert site para obter site_id
+        siteId = await upsertSite(site);
+
+        // 2. Salva evento com site_id
+        await saveToSupabase(event, quizId, ip, siteId);
+
+        saved = 'supabase';
+      } catch (supabaseError) {
+        console.error('Supabase error:', supabaseError);
+        errorDetails = supabaseError.message;
+
+        // Fallback: salva no JSON apenas em dev
+        if (process.env.NODE_ENV === 'development') {
+          saveToJSON(event, quizId, ip, site);
+          saved = 'json-fallback';
+        } else {
+          // Em produção sem Supabase: apenas loga e retorna ok
+          console.log('[Track] Production without Supabase:', { event, quizId, site });
+          saved = 'logged';
+        }
+      }
     } else {
-      saveToJSON(event, quizId, ip);
+      // Supabase não configurado
+      if (process.env.NODE_ENV === 'development') {
+        saveToJSON(event, quizId, ip, site);
+        saved = 'json';
+      } else {
+        console.log('[Track] No Supabase configured:', { event, quizId, site });
+        saved = 'logged';
+      }
     }
 
-    // Resposta rápida
-    return res.status(200).json({ ok: true });
+    // Resposta com informação de onde foi salvo
+    return res.status(200).json({
+      ok: true,
+      saved: saved,
+      event: event,
+      quizId: quizId,
+      site: site,
+      siteId: siteId,
+      timestamp: new Date().toISOString(),
+      error: errorDetails
+    });
 
   } catch (error) {
     console.error('Error tracking event:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
   }
 }

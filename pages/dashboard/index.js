@@ -188,7 +188,7 @@ export default function Dashboard() {
   return (
     <>
       <Head>
-        <title>Dashboard - Conversões de Quizzes v2.0</title>
+        <title>Dashboard - Conversões de Quizzes v3.0</title>
         <meta name="description" content="Painel de estatísticas de quizzes" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
@@ -202,7 +202,7 @@ export default function Dashboard() {
                 <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
                   <span className="text-4xl">📈</span>
                   Conversões de Quizzes
-                  <span className="text-sm bg-indigo-100 text-indigo-800 px-2 py-1 rounded">v2.0</span>
+                  <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">v3.0</span>
                 </h1>
                 <p className="text-gray-600 mt-2">
                   Estatísticas em tempo real - Atualização automática a cada 5 segundos
