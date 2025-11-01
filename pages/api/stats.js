@@ -109,7 +109,7 @@ export default async function handler(req, res) {
     }
 
     // Validação de parâmetros
-    const validRanges = ['hour', 'day', 'week'];
+    const validRanges = ['minute', 'hour', 'day', 'week'];
     const selectedRange = validRanges.includes(range) ? range : 'day';
 
     // Suporta tanto days (antigo) quanto startDate/endDate (novo)
