@@ -15,9 +15,15 @@ export default function Dashboard() {
 
   // Filtros multi-site v2
   const [selectedSite, setSelectedSite] = useState('all');
-  const [selectedDays, setSelectedDays] = useState(30);
   const [selectedRange, setSelectedRange] = useState('day');
   const [lastUpdate, setLastUpdate] = useState(null);
+
+  // Filtros de data/hora v3
+  const [useCustomDates, setUseCustomDates] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [startTime, setStartTime] = useState('00:00');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('23:59');
 
   // Verifica autenticação no localStorage
   useEffect(() => {
@@ -68,14 +74,25 @@ export default function Dashboard() {
 
     const params = new URLSearchParams();
     params.append('range', selectedRange);
-    params.append('days', selectedDays.toString());
+
+    if (useCustomDates && startDate && endDate) {
+      // Modo v3: timestamps específicos
+      const start = new Date(`${startDate}T${startTime}`).toISOString();
+      const end = new Date(`${endDate}T${endTime}`).toISOString();
+      params.append('startDate', start);
+      params.append('endDate', end);
+    } else {
+      // Modo v2: days (fallback para compatibilidade)
+      params.append('days', '30');
+    }
+
     if (selectedSite && selectedSite !== 'all') {
       params.append('site', selectedSite);
     }
     const url = `/api/stats?${params.toString()}`;
     console.log('🔗 SWR: URL construída', url);
     return url;
-  }, [isAuthenticated, selectedRange, selectedDays, selectedSite]);
+  }, [isAuthenticated, selectedRange, selectedSite, useCustomDates, startDate, startTime, endDate, endTime]);
 
   const { data: statsResponse, error, isLoading, mutate } = useSWR(
     statsUrl,
@@ -123,6 +140,49 @@ export default function Dashboard() {
       console.log('   ✅ Completes exibidas:', totalCompletes.toLocaleString());
     }
   }, [statsResponse, totalQuizzes, totalViews, totalCompletes]);
+
+  // Funções helper para presets de data/hora
+  const applyPreset = (preset) => {
+    const now = new Date();
+    let start, end;
+
+    switch (preset) {
+      case 'last-hour':
+        start = new Date(now.getTime() - 60 * 60 * 1000);
+        end = now;
+        break;
+      case 'today':
+        start = new Date(now.setHours(0, 0, 0, 0));
+        end = new Date(now.setHours(23, 59, 59, 999));
+        break;
+      case 'yesterday':
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        start = new Date(yesterday.setHours(0, 0, 0, 0));
+        end = new Date(yesterday.setHours(23, 59, 59, 999));
+        break;
+      case 'last-24h':
+        start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        end = now;
+        break;
+      case 'last-7d':
+        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        end = now;
+        break;
+      case 'last-30d':
+        start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        end = now;
+        break;
+      default:
+        return;
+    }
+
+    setStartDate(start.toISOString().split('T')[0]);
+    setStartTime(start.toTimeString().slice(0, 5));
+    setEndDate(end.toISOString().split('T')[0]);
+    setEndTime(end.toTimeString().slice(0, 5));
+    setUseCustomDates(true);
+  };
 
   // Função de login com validação real
   const handleLogin = async (e) => {
@@ -353,6 +413,108 @@ export default function Dashboard() {
                   <option value="week">Por semana</option>
                 </select>
               </div>
+            </div>
+
+            {/* Filtros de Data/Hora v3 */}
+            <div className="mt-4 border-t pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="checkbox"
+                  id="custom-dates-toggle"
+                  checked={useCustomDates}
+                  onChange={(e) => setUseCustomDates(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label htmlFor="custom-dates-toggle" className="text-sm font-medium text-gray-700">
+                  Usar intervalo de data/hora customizado
+                </label>
+              </div>
+
+              {useCustomDates && (
+                <>
+                  {/* Presets rápidos */}
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => applyPreset('last-hour')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Última hora
+                    </button>
+                    <button
+                      onClick={() => applyPreset('today')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Hoje
+                    </button>
+                    <button
+                      onClick={() => applyPreset('yesterday')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Ontem
+                    </button>
+                    <button
+                      onClick={() => applyPreset('last-24h')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Últimas 24h
+                    </button>
+                    <button
+                      onClick={() => applyPreset('last-7d')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Últimos 7 dias
+                    </button>
+                    <button
+                      onClick={() => applyPreset('last-30d')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Últimos 30 dias
+                    </button>
+                  </div>
+
+                  {/* Date/Time pickers */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Data/Hora Início
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        <input
+                          type="time"
+                          value={startTime}
+                          onChange={(e) => setStartTime(e.target.value)}
+                          className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Data/Hora Fim
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        <input
+                          type="time"
+                          value={endTime}
+                          onChange={(e) => setEndTime(e.target.value)}
+                          className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
