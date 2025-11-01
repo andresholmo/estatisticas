@@ -661,9 +661,8 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Gráfico */}
+          {/* Gráfico (apenas aba Geral) */}
           {activeTab === 'general' && !isLoading && !error && stats && stats.length > 0 && (
-          {!isLoading && !error && stats && stats.length > 0 && (
             <ConversionChart stats={stats} />
           )}
 
