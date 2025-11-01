@@ -5,9 +5,11 @@ export default function ConversionChart({ stats }) {
     return null;
   }
 
-  // Prepara dados para o gráfico
+  // Prepara dados para o gráfico (multi-site v2)
   const chartData = stats.map(stat => ({
+    label: `${stat.quizId} (${stat.site || 'unknown'})`,
     quizId: stat.quizId,
+    site: stat.site || 'unknown',
     conversao: parseFloat(stat.conversionRate),
     views: stat.views,
     completes: stat.completes,
@@ -31,7 +33,7 @@ export default function ConversionChart({ stats }) {
         >
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
-            dataKey="quizId"
+            dataKey="label"
             angle={-45}
             textAnchor="end"
             height={100}
@@ -48,6 +50,7 @@ export default function ConversionChart({ stats }) {
                 return (
                   <div className="bg-white p-4 border border-gray-300 rounded shadow-lg">
                     <p className="font-semibold text-gray-900">{data.quizId}</p>
+                    <p className="text-xs text-gray-500 mb-2">{data.site}</p>
                     <p className="text-sm text-gray-600">
                       Taxa de conversão: <span className="font-bold">{data.conversao.toFixed(1)}%</span>
                     </p>
