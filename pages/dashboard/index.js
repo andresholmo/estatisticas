@@ -16,7 +16,7 @@ export default function Dashboard() {
   // Filtros multi-site v2
   const [selectedSite, setSelectedSite] = useState('all');
   const [selectedRange, setSelectedRange] = useState('day');
-  const [selectedDays, setSelectedDays] = useState(30); // Usado quando custom dates está desativado
+  const [selectedDays, setSelectedDays] = useState('30'); // String para suportar 'today', 'yesterday', '7', etc
   const [lastUpdate, setLastUpdate] = useState(null);
 
   // Filtros de data/hora v3
@@ -77,14 +77,33 @@ export default function Dashboard() {
     params.append('range', selectedRange);
 
     if (useCustomDates && startDate && endDate) {
-      // Modo v3: timestamps específicos
+      // Modo v3: timestamps específicos (custom dates ativado)
       const start = new Date(`${startDate}T${startTime}`).toISOString();
       const end = new Date(`${endDate}T${endTime}`).toISOString();
       params.append('startDate', start);
       params.append('endDate', end);
     } else {
-      // Modo v2: days (usa selectedDays)
-      params.append('days', selectedDays.toString());
+      // Modo v2: usa dropdown de período
+      const now = new Date();
+
+      if (selectedDays === 'today') {
+        // Hoje: 00:00 até agora
+        const start = new Date(now.setHours(0, 0, 0, 0)).toISOString();
+        const end = new Date().toISOString();
+        params.append('startDate', start);
+        params.append('endDate', end);
+      } else if (selectedDays === 'yesterday') {
+        // Ontem: dia completo
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const start = new Date(yesterday.setHours(0, 0, 0, 0)).toISOString();
+        const end = new Date(yesterday.setHours(23, 59, 59, 999)).toISOString();
+        params.append('startDate', start);
+        params.append('endDate', end);
+      } else {
+        // Números normais (7, 30, 90 dias)
+        params.append('days', selectedDays);
+      }
     }
 
     if (selectedSite && selectedSite !== 'all') {
@@ -93,7 +112,7 @@ export default function Dashboard() {
     const url = `/api/stats?${params.toString()}`;
     console.log('🔗 SWR: URL construída', url);
     return url;
-  }, [isAuthenticated, selectedRange, selectedSite, useCustomDates, startDate, startTime, endDate, endTime]);
+  }, [isAuthenticated, selectedRange, selectedSite, useCustomDates, startDate, startTime, endDate, endTime, selectedDays]);
 
   const { data: statsResponse, error, isLoading, mutate } = useSWR(
     statsUrl,
@@ -390,9 +409,11 @@ export default function Dashboard() {
                   <select
                     id="period-filter"
                     value={selectedDays}
-                    onChange={(e) => setSelectedDays(parseInt(e.target.value))}
+                    onChange={(e) => setSelectedDays(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                   >
+                    <option value="today">Hoje</option>
+                    <option value="yesterday">Ontem</option>
                     <option value="7">Últimos 7 dias</option>
                     <option value="30">Últimos 30 dias</option>
                     <option value="90">Últimos 90 dias</option>
