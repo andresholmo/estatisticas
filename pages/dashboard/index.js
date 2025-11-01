@@ -12,7 +12,11 @@ export default function Dashboard() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [range, setRange] = useState('all');
+
+  // Filtros multi-site v2
+  const [selectedSite, setSelectedSite] = useState('all');
+  const [selectedDays, setSelectedDays] = useState(30);
+  const [selectedRange, setSelectedRange] = useState('day');
 
   // Verifica autenticação no localStorage
   useEffect(() => {
@@ -47,15 +51,40 @@ export default function Dashboard() {
     verifyAuth();
   }, []);
 
-  // Atualiza a cada 5 segundos com filtro de data
-  const { data: stats, error, isLoading } = useSWR(
-    isAuthenticated ? `/api/stats?range=${range}` : null,
+  // Busca lista de sites (sem refresh automático)
+  const { data: sitesData } = useSWR(
+    isAuthenticated ? '/api/stats?distinct=site' : null,
     fetcher,
     {
-      refreshInterval: 5000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+    }
+  );
+
+  // Busca stats com filtros multi-site (refresh a cada 30s)
+  const buildStatsUrl = () => {
+    const params = new URLSearchParams();
+    params.append('range', selectedRange);
+    params.append('days', selectedDays.toString());
+    if (selectedSite && selectedSite !== 'all') {
+      params.append('site', selectedSite);
+    }
+    return `/api/stats?${params.toString()}`;
+  };
+
+  const { data: statsResponse, error, isLoading } = useSWR(
+    isAuthenticated ? buildStatsUrl() : null,
+    fetcher,
+    {
+      refreshInterval: 30000, // 30 segundos
       revalidateOnFocus: true,
     }
   );
+
+  // Extrai totals e bucketed da resposta v2
+  const stats = statsResponse?.totals || [];
+  const bucketed = statsResponse?.bucketed || [];
+  const sites = sitesData?.sites || [];
 
   // Função de login com validação real
   const handleLogin = async (e) => {
@@ -205,7 +234,7 @@ export default function Dashboard() {
                   <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">v3.0</span>
                 </h1>
                 <p className="text-gray-600 mt-2">
-                  Estatísticas em tempo real - Atualização automática a cada 5 segundos
+                  Estatísticas em tempo real - Atualização automática a cada 30 segundos
                 </p>
               </div>
               <button
@@ -216,38 +245,61 @@ export default function Dashboard() {
               </button>
             </div>
 
-            {/* Filtros de data */}
-            <div className="mt-6 flex gap-2 flex-wrap">
-              <button
-                onClick={() => setRange('7d')}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  range === '7d'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Últimos 7 dias
-              </button>
-              <button
-                onClick={() => setRange('30d')}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  range === '30d'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Últimos 30 dias
-              </button>
-              <button
-                onClick={() => setRange('all')}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  range === 'all'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Todos
-              </button>
+            {/* Filtros multi-site v2 */}
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Filtro: Site */}
+              <div>
+                <label htmlFor="site-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                  Site
+                </label>
+                <select
+                  id="site-filter"
+                  value={selectedSite}
+                  onChange={(e) => setSelectedSite(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                >
+                  <option value="all">Todos os sites</option>
+                  {sites.map((site) => (
+                    <option key={site} value={site}>
+                      {site}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro: Período */}
+              <div>
+                <label htmlFor="period-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                  Período
+                </label>
+                <select
+                  id="period-filter"
+                  value={selectedDays}
+                  onChange={(e) => setSelectedDays(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                >
+                  <option value="7">Últimos 7 dias</option>
+                  <option value="30">Últimos 30 dias</option>
+                  <option value="90">Últimos 90 dias</option>
+                </select>
+              </div>
+
+              {/* Filtro: Agregação */}
+              <div>
+                <label htmlFor="range-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                  Agregação
+                </label>
+                <select
+                  id="range-filter"
+                  value={selectedRange}
+                  onChange={(e) => setSelectedRange(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                >
+                  <option value="hour">Por hora</option>
+                  <option value="day">Por dia</option>
+                  <option value="week">Por semana</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -291,6 +343,9 @@ export default function Dashboard() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Site
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Quiz ID
                         </th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -307,9 +362,14 @@ export default function Dashboard() {
                     <tbody className="bg-white divide-y divide-gray-200">
                       {stats.map((stat, index) => (
                         <tr
-                          key={stat.quizId}
+                          key={`${stat.site}-${stat.quizId}`}
                           className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                         >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-600">
+                              {stat.site || 'unknown'}
+                            </div>
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">
                               {stat.quizId}
@@ -346,11 +406,16 @@ export default function Dashboard() {
                 <div className="md:hidden p-4 space-y-4">
                   {stats.map((stat) => (
                     <div
-                      key={stat.quizId}
+                      key={`${stat.site}-${stat.quizId}`}
                       className="bg-gray-50 rounded-lg p-4 border border-gray-200"
                     >
-                      <div className="font-semibold text-gray-900 mb-3 text-lg">
-                        {stat.quizId}
+                      <div className="mb-3">
+                        <div className="text-xs text-gray-500 mb-1">
+                          {stat.site || 'unknown'}
+                        </div>
+                        <div className="font-semibold text-gray-900 text-lg">
+                          {stat.quizId}
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <div className="flex justify-between">
