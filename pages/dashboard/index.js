@@ -352,10 +352,7 @@ export default function Dashboard() {
                   <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">v3.0</span>
                 </h1>
                 <p className="text-gray-600 mt-2">
-                  {activeTab === 'realtime'
-                    ? 'Últimos 5 minutos - Atualização a cada 10 segundos'
-                    : 'Estatísticas - Atualização automática a cada 30 segundos'
-                  }
+                  Estatísticas - Atualização automática a cada 15 segundos
                   {lastUpdate && (
                     <span className="text-xs text-gray-500 ml-2">
                       (última: {lastUpdate.toLocaleTimeString('pt-BR')})
