@@ -19,6 +19,9 @@ export default function Dashboard() {
   const [selectedDays, setSelectedDays] = useState('30'); // String para suportar 'today', 'yesterday', '7', etc
   const [lastUpdate, setLastUpdate] = useState(null);
 
+  // Sistema de abas (Geral / Tempo Real)
+  const [activeTab, setActiveTab] = useState('general'); // 'general' ou 'realtime'
+
   // Filtros de data/hora v3
   const [useCustomDates, setUseCustomDates] = useState(false);
   const [startDate, setStartDate] = useState('');
@@ -74,6 +77,23 @@ export default function Dashboard() {
     if (!isAuthenticated) return null;
 
     const params = new URLSearchParams();
+
+    // Aba Tempo Real: últimos 5 minutos, agregação por minuto
+    if (activeTab === 'realtime') {
+      const now = new Date();
+      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+      params.append('range', 'minute'); // Agregação por minuto
+      params.append('startDate', fiveMinutesAgo.toISOString());
+      params.append('endDate', now.toISOString());
+      if (selectedSite && selectedSite !== 'all') {
+        params.append('site', selectedSite);
+      }
+      const url = `/api/stats?${params.toString()}`;
+      console.log('🔗 SWR: URL Tempo Real construída', url);
+      return url;
+    }
+
+    // Aba Geral: usa filtros normais
     params.append('range', selectedRange);
 
     if (useCustomDates && startDate && endDate) {
@@ -112,18 +132,18 @@ export default function Dashboard() {
     const url = `/api/stats?${params.toString()}`;
     console.log('🔗 SWR: URL construída', url);
     return url;
-  }, [isAuthenticated, selectedRange, selectedSite, useCustomDates, startDate, startTime, endDate, endTime, selectedDays]);
+  }, [isAuthenticated, selectedRange, selectedSite, useCustomDates, startDate, startTime, endDate, endTime, selectedDays, activeTab]);
 
   const { data: statsResponse, error, isLoading, mutate } = useSWR(
     statsUrl,
     fetcher,
     {
-      refreshInterval: 30000, // 30 segundos
+      refreshInterval: activeTab === 'realtime' ? 10000 : 30000, // 10s para tempo real, 30s para geral
       revalidateOnFocus: true,
       revalidateIfStale: true,
       revalidateOnMount: true,
       dedupingInterval: 2000,
-      refreshWhenHidden: true, // Continua atualizando mesmo em aba inativa
+      refreshWhenHidden: activeTab === 'realtime', // Continua atualizando tempo real mesmo em aba inativa
       refreshWhenOffline: false,
       onSuccess: (data) => {
         const totalViews = data?.totals?.reduce((sum, s) => sum + (s.views || 0), 0) || 0;
@@ -352,7 +372,10 @@ export default function Dashboard() {
                   <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">v3.0</span>
                 </h1>
                 <p className="text-gray-600 mt-2">
-                  Estatísticas em tempo real - Atualização automática a cada 30 segundos
+                  {activeTab === 'realtime'
+                    ? 'Últimos 5 minutos - Atualização a cada 10 segundos'
+                    : 'Estatísticas - Atualização automática a cada 30 segundos'
+                  }
                   {lastUpdate && (
                     <span className="text-xs text-gray-500 ml-2">
                       (última: {lastUpdate.toLocaleTimeString('pt-BR')})
@@ -378,8 +401,38 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Filtros multi-site v2 */}
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Sistema de Abas */}
+            <div className="mt-6 border-b border-gray-200">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('general')}
+                  className={`${
+                    activeTab === 'general'
+                      ? 'border-indigo-500 text-indigo-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+                >
+                  📊 Geral
+                </button>
+                <button
+                  onClick={() => setActiveTab('realtime')}
+                  className={`${
+                    activeTab === 'realtime'
+                      ? 'border-indigo-500 text-indigo-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+                >
+                  ⚡ Tempo Real
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                    5min
+                  </span>
+                </button>
+              </nav>
+            </div>
+
+            {/* Filtros multi-site v2 (apenas aba Geral) */}
+            {activeTab === 'general' && (
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Filtro: Site */}
               <div>
                 <label htmlFor="site-filter" className="block text-sm font-medium text-gray-700 mb-2">
@@ -540,9 +593,76 @@ export default function Dashboard() {
                 </>
               )}
             </div>
+            )}
+
+            {/* Filtro simples: Site (apenas aba Tempo Real) */}
+            {activeTab === 'realtime' && (
+              <div className="mt-6">
+                <label htmlFor="site-filter-realtime" className="block text-sm font-medium text-gray-700 mb-2">
+                  Filtrar por Site
+                </label>
+                <select
+                  id="site-filter-realtime"
+                  value={selectedSite}
+                  onChange={(e) => setSelectedSite(e.target.value)}
+                  className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                >
+                  <option value="all">Todos os sites</option>
+                  {sites.map((site) => (
+                    <option key={site} value={site}>
+                      {site}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
+          {/* Cards Tempo Real */}
+          {activeTab === 'realtime' && !isLoading && !error && stats && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              {/* Card: Views */}
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm font-medium">Views</p>
+                    <p className="text-4xl font-bold text-gray-900 mt-2">{totalViews.toLocaleString()}</p>
+                    <p className="text-xs text-gray-500 mt-1">últimos 5 minutos</p>
+                  </div>
+                  <div className="text-5xl">👁️</div>
+                </div>
+              </div>
+
+              {/* Card: Completes */}
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm font-medium">Completes</p>
+                    <p className="text-4xl font-bold text-gray-900 mt-2">{totalCompletes.toLocaleString()}</p>
+                    <p className="text-xs text-gray-500 mt-1">últimos 5 minutos</p>
+                  </div>
+                  <div className="text-5xl">✅</div>
+                </div>
+              </div>
+
+              {/* Card: Taxa de Conversão */}
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm font-medium">Taxa de Conversão</p>
+                    <p className="text-4xl font-bold text-gray-900 mt-2">
+                      {totalViews > 0 ? ((totalCompletes / totalViews) * 100).toFixed(1) : '0.0'}%
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">últimos 5 minutos</p>
+                  </div>
+                  <div className="text-5xl">📈</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Gráfico */}
+          {activeTab === 'general' && !isLoading && !error && stats && stats.length > 0 && (
           {!isLoading && !error && stats && stats.length > 0 && (
             <ConversionChart stats={stats} />
           )}
