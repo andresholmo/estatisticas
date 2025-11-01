@@ -146,7 +146,7 @@ export default function Dashboard() {
     return url;
   }, [isAuthenticated, selectedRange, selectedSite, useCustomDates, startDate, startTime, endDate, endTime, selectedDays, activeTab, realtimeTick]);
 
-  const { data: statsResponse, error, isLoading, mutate } = useSWR(
+  const { data: statsResponse, error, isLoading, isValidating, mutate } = useSWR(
     statsUrl,
     fetcher,
     {
@@ -633,10 +633,13 @@ export default function Dashboard() {
           </div>
 
           {/* Cards Tempo Real */}
-          {activeTab === 'realtime' && !isLoading && !error && stats && (
+          {activeTab === 'realtime' && !error && statsResponse && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {/* Card: Views */}
-              <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="bg-white rounded-lg shadow-lg p-6 relative">
+                {isValidating && (
+                  <div className="absolute top-2 right-2 w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Atualizando..."></div>
+                )}
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-500 text-sm font-medium">Views</p>
@@ -648,7 +651,10 @@ export default function Dashboard() {
               </div>
 
               {/* Card: Completes */}
-              <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="bg-white rounded-lg shadow-lg p-6 relative">
+                {isValidating && (
+                  <div className="absolute top-2 right-2 w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Atualizando..."></div>
+                )}
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-500 text-sm font-medium">Completes</p>
@@ -660,7 +666,10 @@ export default function Dashboard() {
               </div>
 
               {/* Card: Taxa de Conversão */}
-              <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="bg-white rounded-lg shadow-lg p-6 relative">
+                {isValidating && (
+                  <div className="absolute top-2 right-2 w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Atualizando..."></div>
+                )}
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-500 text-sm font-medium">Taxa de Conversão</p>
