@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import useSWR from 'swr';
 import Head from 'next/head';
 import ConversionChart from '../../components/Chart';
@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [selectedSite, setSelectedSite] = useState('all');
   const [selectedDays, setSelectedDays] = useState(30);
   const [selectedRange, setSelectedRange] = useState('day');
+  const [lastUpdate, setLastUpdate] = useState(null);
 
   // Verifica autenticação no localStorage
   useEffect(() => {
@@ -62,7 +63,9 @@ export default function Dashboard() {
   );
 
   // Busca stats com filtros multi-site (refresh a cada 30s)
-  const buildStatsUrl = () => {
+  const statsUrl = useMemo(() => {
+    if (!isAuthenticated) return null;
+
     const params = new URLSearchParams();
     params.append('range', selectedRange);
     params.append('days', selectedDays.toString());
@@ -70,10 +73,10 @@ export default function Dashboard() {
       params.append('site', selectedSite);
     }
     return `/api/stats?${params.toString()}`;
-  };
+  }, [isAuthenticated, selectedRange, selectedDays, selectedSite]);
 
   const { data: statsResponse, error, isLoading } = useSWR(
-    isAuthenticated ? buildStatsUrl() : null,
+    statsUrl,
     fetcher,
     {
       refreshInterval: 30000, // 30 segundos
@@ -85,6 +88,13 @@ export default function Dashboard() {
   const stats = statsResponse?.totals || [];
   const bucketed = statsResponse?.bucketed || [];
   const sites = sitesData?.sites || [];
+
+  // Atualiza timestamp quando dados mudam
+  useEffect(() => {
+    if (statsResponse) {
+      setLastUpdate(new Date());
+    }
+  }, [statsResponse]);
 
   // Função de login com validação real
   const handleLogin = async (e) => {
@@ -235,6 +245,11 @@ export default function Dashboard() {
                 </h1>
                 <p className="text-gray-600 mt-2">
                   Estatísticas em tempo real - Atualização automática a cada 30 segundos
+                  {lastUpdate && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      (última: {lastUpdate.toLocaleTimeString('pt-BR')})
+                    </span>
+                  )}
                 </p>
               </div>
               <button
