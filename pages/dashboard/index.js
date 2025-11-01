@@ -72,15 +72,28 @@ export default function Dashboard() {
     if (selectedSite && selectedSite !== 'all') {
       params.append('site', selectedSite);
     }
-    return `/api/stats?${params.toString()}`;
+    const url = `/api/stats?${params.toString()}`;
+    console.log('🔗 SWR: URL construída', url);
+    return url;
   }, [isAuthenticated, selectedRange, selectedDays, selectedSite]);
 
-  const { data: statsResponse, error, isLoading } = useSWR(
+  const { data: statsResponse, error, isLoading, mutate } = useSWR(
     statsUrl,
     fetcher,
     {
       refreshInterval: 30000, // 30 segundos
       revalidateOnFocus: true,
+      revalidateIfStale: true,
+      revalidateOnMount: true,
+      dedupingInterval: 2000,
+      refreshWhenHidden: true, // Continua atualizando mesmo em aba inativa
+      refreshWhenOffline: false,
+      onSuccess: (data) => {
+        console.log('🔄 SWR: Dados atualizados', new Date().toLocaleTimeString('pt-BR'), data);
+      },
+      onError: (err) => {
+        console.error('❌ SWR: Erro ao buscar dados', err);
+      }
     }
   );
 
@@ -252,12 +265,22 @@ export default function Dashboard() {
                   )}
                 </p>
               </div>
-              <button
-                onClick={handleLogout}
-                className="text-sm text-gray-600 hover:text-gray-900 underline"
-              >
-                Sair
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => mutate()}
+                  disabled={isLoading}
+                  className="text-sm bg-indigo-100 text-indigo-700 px-3 py-1 rounded hover:bg-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Atualizar dados agora"
+                >
+                  🔄 Atualizar
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-gray-600 hover:text-gray-900 underline"
+                >
+                  Sair
+                </button>
+              </div>
             </div>
 
             {/* Filtros multi-site v2 */}
