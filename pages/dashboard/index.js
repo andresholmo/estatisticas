@@ -16,6 +16,7 @@ export default function Dashboard() {
   // Filtros multi-site v2
   const [selectedSite, setSelectedSite] = useState('all');
   const [selectedRange, setSelectedRange] = useState('day');
+  const [selectedDays, setSelectedDays] = useState(30); // Usado quando custom dates está desativado
   const [lastUpdate, setLastUpdate] = useState(null);
 
   // Filtros de data/hora v3
@@ -82,8 +83,8 @@ export default function Dashboard() {
       params.append('startDate', start);
       params.append('endDate', end);
     } else {
-      // Modo v2: days (fallback para compatibilidade)
-      params.append('days', '30');
+      // Modo v2: days (usa selectedDays)
+      params.append('days', selectedDays.toString());
     }
 
     if (selectedSite && selectedSite !== 'all') {
@@ -380,22 +381,24 @@ export default function Dashboard() {
                 </select>
               </div>
 
-              {/* Filtro: Período */}
-              <div>
-                <label htmlFor="period-filter" className="block text-sm font-medium text-gray-700 mb-2">
-                  Período
-                </label>
-                <select
-                  id="period-filter"
-                  value={selectedDays}
-                  onChange={(e) => setSelectedDays(parseInt(e.target.value))}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                >
-                  <option value="7">Últimos 7 dias</option>
-                  <option value="30">Últimos 30 dias</option>
-                  <option value="90">Últimos 90 dias</option>
-                </select>
-              </div>
+              {/* Filtro: Período (apenas quando custom dates desativado) */}
+              {!useCustomDates && (
+                <div>
+                  <label htmlFor="period-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                    Período
+                  </label>
+                  <select
+                    id="period-filter"
+                    value={selectedDays}
+                    onChange={(e) => setSelectedDays(parseInt(e.target.value))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                  >
+                    <option value="7">Últimos 7 dias</option>
+                    <option value="30">Últimos 30 dias</option>
+                    <option value="90">Últimos 90 dias</option>
+                  </select>
+                </div>
+              )}
 
               {/* Filtro: Agregação */}
               <div>
