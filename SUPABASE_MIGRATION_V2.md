@@ -2,6 +2,8 @@
 
 Execute este SQL no Supabase SQL Editor antes de fazer deploy do código.
 
+> **⚠️ IMPORTANTE:** Se você encontrar erro `new row violates row-level security policy`, execute a seção de "Troubleshooting RLS" no final deste arquivo.
+
 ---
 
 ## 1️⃣ Criar Tabela de Sites
@@ -16,11 +18,22 @@ CREATE TABLE IF NOT EXISTS sites (
 
 -- Índice para buscas rápidas por domínio
 CREATE INDEX IF NOT EXISTS idx_sites_domain ON sites(domain);
+```
 
--- Habilita RLS (opcional, mas recomendado)
+### **Opção A: Desabilitar RLS (RECOMENDADO para uso interno)**
+
+```sql
+-- Desabilita Row Level Security para permitir API inserir livremente
+ALTER TABLE sites DISABLE ROW LEVEL SECURITY;
+```
+
+### **Opção B: Habilitar RLS com Policies (para produção segura)**
+
+```sql
+-- Habilita RLS
 ALTER TABLE sites ENABLE ROW LEVEL SECURITY;
 
--- Permite leitura pública (para a API consultar)
+-- Permite leitura pública
 CREATE POLICY IF NOT EXISTS "Allow public read sites"
   ON sites FOR SELECT
   USING (true);
@@ -28,6 +41,12 @@ CREATE POLICY IF NOT EXISTS "Allow public read sites"
 -- Permite insert público (para upsert automático)
 CREATE POLICY IF NOT EXISTS "Allow public insert sites"
   ON sites FOR INSERT
+  WITH CHECK (true);
+
+-- IMPORTANTE: Permite UPDATE para upsert funcionar
+CREATE POLICY IF NOT EXISTS "Allow public update sites"
+  ON sites FOR UPDATE
+  USING (true)
   WITH CHECK (true);
 ```
 
@@ -45,6 +64,9 @@ CREATE INDEX IF NOT EXISTS idx_events_site_id ON events(site_id);
 
 -- Cria índice composto para queries filtradas por site
 CREATE INDEX IF NOT EXISTS idx_events_site_quiz ON events(site_id, quiz_id);
+
+-- IMPORTANTE: Desabilitar RLS também na tabela events (se você escolheu Opção A acima)
+ALTER TABLE events DISABLE ROW LEVEL SECURITY;
 ```
 
 ---
@@ -290,6 +312,52 @@ seriedrama.com   | wlb     | 3500  | 980       | 28.0
 
 ---
 
+## 🔧 Troubleshooting: RLS Errors
+
+### Erro: "new row violates row-level security policy"
+
+**Sintoma:** Logs da Vercel mostram erro `42501` ao tentar inserir sites ou eventos.
+
+**Causa:** Row Level Security está bloqueando inserções via API.
+
+**Solução Rápida (RECOMENDADA):**
+
+```sql
+-- Desabilitar RLS nas duas tabelas
+ALTER TABLE sites DISABLE ROW LEVEL SECURITY;
+ALTER TABLE events DISABLE ROW LEVEL SECURITY;
+
+-- Confirmar que foi desabilitado
+SELECT tablename, rowsecurity
+FROM pg_tables
+WHERE schemaname = 'public'
+AND tablename IN ('sites', 'events');
+-- Deve mostrar rowsecurity = false
+```
+
+**Solução Alternativa (com RLS mantido):**
+
+```sql
+-- Adicionar policy de UPDATE que estava faltando
+CREATE POLICY IF NOT EXISTS "Allow public update sites"
+  ON sites FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
+
+-- Garantir que events também tem todas as policies
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "Allow public insert events"
+  ON events FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY IF NOT EXISTS "Allow public select events"
+  ON events FOR SELECT
+  USING (true);
+```
+
+---
+
 ## ⚠️ Notas Importantes
 
 1. **Migração de Dados Existentes:**
@@ -307,8 +375,9 @@ seriedrama.com   | wlb     | 3500  | 980       | 28.0
    - `get_quiz_stats_v2` com range='hour' pode ser lento se p_days for muito grande (>7)
 
 3. **RLS (Row Level Security):**
-   - As políticas permitem acesso público para leitura e insert
-   - Se quiser restringir, modifique as políticas
+   - **Recomendado:** Desabilitar RLS para simplicidade (uso interno)
+   - **Produção:** Habilitar RLS com policies completas (incluindo UPDATE)
+   - Se encontrar erro 42501, consulte seção de Troubleshooting acima
 
 ---
 
