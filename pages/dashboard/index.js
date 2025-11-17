@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import useSWR from 'swr';
 import Head from 'next/head';
 import ConversionChart from '../../components/Chart';
@@ -12,7 +12,18 @@ export default function Dashboard() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [range, setRange] = useState('all');
+
+  // Filtros multi-site v2
+  const [selectedSite, setSelectedSite] = useState('all');
+  const [selectedRange, setSelectedRange] = useState('day');
+  const [lastUpdate, setLastUpdate] = useState(null);
+
+  // Filtros de data/hora v3
+  const [useCustomDates, setUseCustomDates] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [startTime, setStartTime] = useState('00:00');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('23:59');
 
   // Verifica autenticação no localStorage
   useEffect(() => {
@@ -47,15 +58,103 @@ export default function Dashboard() {
     verifyAuth();
   }, []);
 
-  // Atualiza a cada 5 segundos com filtro de data
-  const { data: stats, error, isLoading } = useSWR(
-    isAuthenticated ? `/api/stats?range=${range}` : null,
+  // Busca lista de sites (sem refresh automático)
+  const { data: sitesData } = useSWR(
+    isAuthenticated ? '/api/stats?distinct=site' : null,
     fetcher,
     {
-      refreshInterval: 5000,
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
     }
   );
+
+  // Função helper para presets de data/hora (SEM "Hoje" e "Ontem")
+  const applyPreset = (preset) => {
+    const now = new Date();
+    let start, end;
+
+    switch (preset) {
+      case 'last-hour':
+        start = new Date(now.getTime() - 60 * 60 * 1000);
+        end = now;
+        break;
+      case 'last-24h':
+        start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        end = now;
+        break;
+      case 'last-7d':
+        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        end = now;
+        break;
+      case 'last-30d':
+        start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        end = now;
+        break;
+      default:
+        return;
+    }
+
+    setStartDate(start.toISOString().split('T')[0]);
+    setStartTime(start.toTimeString().slice(0, 5));
+    setEndDate(end.toISOString().split('T')[0]);
+    setEndTime(end.toTimeString().slice(0, 5));
+    setUseCustomDates(true);
+  };
+
+  // Busca stats com filtros multi-site (refresh a cada 15s)
+  const statsUrl = useMemo(() => {
+    if (!isAuthenticated) return null;
+
+    const params = new URLSearchParams();
+    params.append('range', selectedRange);
+
+    if (useCustomDates && startDate && endDate) {
+      // Modo v3: timestamps específicos
+      const start = new Date(`${startDate}T${startTime}`).toISOString();
+      const end = new Date(`${endDate}T${endTime}`).toISOString();
+      params.append('startDate', start);
+      params.append('endDate', end);
+    } else {
+      // Modo v2: days (fallback para compatibilidade)
+      params.append('days', '30');
+    }
+
+    if (selectedSite && selectedSite !== 'all') {
+      params.append('site', selectedSite);
+    }
+    const url = `/api/stats?${params.toString()}`;
+    return url;
+  }, [isAuthenticated, selectedRange, selectedSite, useCustomDates, startDate, startTime, endDate, endTime]);
+
+  const { data: statsResponse, error, isLoading, mutate } = useSWR(
+    statsUrl,
+    fetcher,
+    {
+      refreshInterval: 15000, // 15 segundos (como no print)
+      revalidateOnFocus: true,
+      revalidateIfStale: true,
+      revalidateOnMount: true,
+      dedupingInterval: 2000,
+      refreshWhenHidden: true,
+      refreshWhenOffline: false,
+    }
+  );
+
+  // Extrai totals e bucketed da resposta v2
+  const stats = statsResponse?.totals || [];
+  const sites = sitesData?.sites || [];
+
+  // Calcula totais
+  const totalQuizzes = stats.length;
+  const totalViews = stats.reduce((sum, s) => sum + (s.views || 0), 0);
+  const totalCompletes = stats.reduce((sum, s) => sum + (s.completes || 0), 0);
+
+  // Atualiza timestamp quando dados mudam
+  useEffect(() => {
+    if (statsResponse) {
+      setLastUpdate(new Date());
+    }
+  }, [statsResponse]);
 
   // Função de login com validação real
   const handleLogin = async (e) => {
@@ -205,49 +304,160 @@ export default function Dashboard() {
                   <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">v3.0</span>
                 </h1>
                 <p className="text-gray-600 mt-2">
-                  Estatísticas em tempo real - Atualização automática a cada 5 segundos
+                  Estatísticas - Atualização automática a cada 15 segundos
+                  {lastUpdate && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      (última: {lastUpdate.toLocaleTimeString('pt-BR')})
+                    </span>
+                  )}
                 </p>
               </div>
-              <button
-                onClick={handleLogout}
-                className="text-sm text-gray-600 hover:text-gray-900 underline"
-              >
-                Sair
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => mutate()}
+                  disabled={isLoading}
+                  className="text-sm bg-indigo-100 text-indigo-700 px-3 py-1 rounded hover:bg-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Atualizar dados agora"
+                >
+                  🔄 Atualizar
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-gray-600 hover:text-gray-900 underline"
+                >
+                  Sair
+                </button>
+              </div>
             </div>
 
-            {/* Filtros de data */}
-            <div className="mt-6 flex gap-2 flex-wrap">
-              <button
-                onClick={() => setRange('7d')}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  range === '7d'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Últimos 7 dias
-              </button>
-              <button
-                onClick={() => setRange('30d')}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  range === '30d'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Últimos 30 dias
-              </button>
-              <button
-                onClick={() => setRange('all')}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                  range === 'all'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Todos
-              </button>
+            {/* Filtros multi-site v2 */}
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Filtro: Site */}
+              <div>
+                <label htmlFor="site-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                  Site
+                </label>
+                <select
+                  id="site-filter"
+                  value={selectedSite}
+                  onChange={(e) => setSelectedSite(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                >
+                  <option value="all">Todos os sites</option>
+                  {sites.map((site) => (
+                    <option key={site} value={site}>
+                      {site}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro: Agregação */}
+              <div>
+                <label htmlFor="range-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                  Agregação
+                </label>
+                <select
+                  id="range-filter"
+                  value={selectedRange}
+                  onChange={(e) => setSelectedRange(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                >
+                  <option value="hour">Por hora</option>
+                  <option value="day">Por dia</option>
+                  <option value="week">Por semana</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Filtros de Data/Hora v3 */}
+            <div className="mt-4 border-t pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="checkbox"
+                  id="custom-dates-toggle"
+                  checked={useCustomDates}
+                  onChange={(e) => setUseCustomDates(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label htmlFor="custom-dates-toggle" className="text-sm font-medium text-gray-700">
+                  Usar intervalo de data/hora customizado
+                </label>
+              </div>
+
+              {useCustomDates && (
+                <>
+                  {/* Presets rápidos (SEM "Hoje" e "Ontem") */}
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => applyPreset('last-hour')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Última hora
+                    </button>
+                    <button
+                      onClick={() => applyPreset('last-24h')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Últimas 24h
+                    </button>
+                    <button
+                      onClick={() => applyPreset('last-7d')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Últimos 7 dias
+                    </button>
+                    <button
+                      onClick={() => applyPreset('last-30d')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Últimos 30 dias
+                    </button>
+                  </div>
+
+                  {/* Date/Time pickers */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Data/Hora Início
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        <input
+                          type="time"
+                          value={startTime}
+                          onChange={(e) => setStartTime(e.target.value)}
+                          className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Data/Hora Fim
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        <input
+                          type="time"
+                          value={endTime}
+                          onChange={(e) => setEndTime(e.target.value)}
+                          className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -387,15 +597,15 @@ export default function Dashboard() {
                   <div className="flex flex-wrap gap-6 text-sm text-gray-600">
                     <div>
                       <span className="font-semibold text-gray-900">Total de Quizzes:</span>{' '}
-                      {stats.length}
+                      {totalQuizzes}
                     </div>
                     <div>
                       <span className="font-semibold text-gray-900">Total de Views:</span>{' '}
-                      {stats.reduce((sum, s) => sum + s.views, 0).toLocaleString()}
+                      {totalViews.toLocaleString()}
                     </div>
                     <div>
                       <span className="font-semibold text-gray-900">Total de Completes:</span>{' '}
-                      {stats.reduce((sum, s) => sum + s.completes, 0).toLocaleString()}
+                      {totalCompletes.toLocaleString()}
                     </div>
                   </div>
                 </div>
