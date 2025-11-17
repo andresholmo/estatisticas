@@ -42,6 +42,22 @@ export default async function handler(req, res) {
     });
 
     if (error) {
+      // Se função não existe ou dá timeout, retorna dados vazios
+      if (error.code === '57014' || error.message?.includes('does not exist') || error.message?.includes('timeout')) {
+        console.log('[Campaigns] Function not found or timeout, returning empty data');
+        return res.status(200).json({
+          quizId,
+          startDate: finalStartDate,
+          endDate: finalEndDate,
+          campaigns: [],
+          totals: {
+            views: 0,
+            completes: 0,
+            conversionRate: '0.00%'
+          },
+          error: 'Function not found or timeout. Please create get_quiz_campaigns function in Supabase.'
+        });
+      }
       console.error('[Campaigns] RPC error:', error);
       throw error;
     }

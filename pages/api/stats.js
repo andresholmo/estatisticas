@@ -289,6 +289,21 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Error getting stats:', error);
+    
+    // Se for erro de timeout ou função não existe, retorna dados vazios ao invés de erro 500
+    if (error.code === '57014' || error.message?.includes('does not exist') || error.message?.includes('timeout')) {
+      console.log('[Stats] Returning empty data due to timeout/function not found');
+      return res.status(200).json({
+        range: selectedRange || 'day',
+        site: site || null,
+        startDate: finalStartDate,
+        endDate: finalEndDate,
+        bucketed: [],
+        totals: [],
+        error: 'Function timeout or not found'
+      });
+    }
+    
     return res.status(500).json({
       error: 'Internal server error',
       details: error.message
