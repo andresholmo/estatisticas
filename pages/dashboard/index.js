@@ -109,14 +109,17 @@ export default function Dashboard() {
     params.append('range', selectedRange);
 
     if (useCustomDates && startDate && endDate) {
-      // Modo v3: timestamps específicos
+      // Modo customizado: usa datas/horas selecionadas pelo usuário
       const start = new Date(`${startDate}T${startTime}`).toISOString();
       const end = new Date(`${endDate}T${endTime}`).toISOString();
       params.append('startDate', start);
       params.append('endDate', end);
     } else {
-      // Modo v2: days (fallback para compatibilidade)
-      params.append('days', '30');
+      // Modo padrão: HOJE das 00:00 até AGORA
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      params.append('startDate', todayStart.toISOString());
+      params.append('endDate', now.toISOString());
     }
 
     if (selectedSite && selectedSite !== 'all') {
@@ -330,7 +333,7 @@ export default function Dashboard() {
                   <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">v3.0</span>
                 </h1>
                 <p className="text-gray-600 mt-2">
-                  Estatísticas - Atualização automática a cada 15 segundos
+                  Estatísticas de hoje - Atualização automática a cada 15 segundos
                   {lastUpdate && (
                     <span className="text-xs text-gray-500 ml-2">
                       (última: {lastUpdate.toLocaleTimeString('pt-BR')})
