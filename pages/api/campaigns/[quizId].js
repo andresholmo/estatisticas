@@ -52,13 +52,14 @@ export default async function handler(req, res) {
     console.log('[Campaigns] First row sample:', data?.[0]);
 
     // Formata dados para o frontend
-    // A função SQL retorna: utm_campaign, views, completes, conversion_rate
+    // A função SQL retorna: utm_campaign (ou campaign), views, completes, conversion_rate
     const campaigns = (data || []).map(row => {
-      // Log para debug
-      console.log('[Campaigns] Processing row:', row);
+      // A função SQL usa COALESCE(e.utm_campaign, 'Sem campanha') as campaign
+      // Então retorna 'campaign', não 'utm_campaign'
+      const campaignName = row.campaign || row.utm_campaign || 'Sem campanha';
       
       return {
-        campaign: row.utm_campaign || 'Sem campanha',
+        campaign: campaignName,
         views: parseInt(row.views) || 0,
         completes: parseInt(row.completes) || 0,
         conversionRate: `${parseFloat(row.conversion_rate || 0).toFixed(2)}%`
