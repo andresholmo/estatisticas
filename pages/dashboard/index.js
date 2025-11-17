@@ -547,9 +547,12 @@ export default function Dashboard() {
                           className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                         >
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
+                            <a
+                              href={`/dashboard/campaigns/${stat.quizId}`}
+                              className="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                            >
                               {stat.quizId}
-                            </div>
+                            </a>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900 font-semibold">
@@ -586,7 +589,12 @@ export default function Dashboard() {
                       className="bg-gray-50 rounded-lg p-4 border border-gray-200"
                     >
                       <div className="font-semibold text-gray-900 mb-3 text-lg">
-                        {stat.quizId}
+                        <a
+                          href={`/dashboard/campaigns/${stat.quizId}`}
+                          className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                        >
+                          {stat.quizId}
+                        </a>
                       </div>
                       <div className="space-y-2">
                         <div className="flex justify-between">

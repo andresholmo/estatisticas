@@ -227,7 +227,7 @@ geoScript.async=true;
 document.body.appendChild(geoScript);
 </script>
 <script>
-(function(){var q="${quizId}",a="https://estatisticas-six.vercel.app/api/track",c=false;function s(e){fetch(a,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:e,quizId:q})}).catch(function(){})}function setup(){setTimeout(function(){s("view")},1000);function complete(){if(!c){c=true;s("complete")}}var btns=document.querySelectorAll(".quiz-button");btns.forEach(function(btn){btn.addEventListener("click",complete)});var il=document.getElementById("imglink");if(il){il.addEventListener("click",complete)}}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",setup)}else{setup()}})();
+(function(){var q="${quizId}",a="https://estatisticas-six.vercel.app/api/track",c=false;function g(){try{var p=new URLSearchParams(window.location.search);return p.get("utm_campaign")||null}catch(e){return null}}function s(e){var u=g();fetch(a,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({event:e,quizId:q,utm_campaign:u})}).catch(function(){})}function setup(){setTimeout(function(){s("view")},1000);function complete(){if(!c){c=true;s("complete")}}var btns=document.querySelectorAll(".quiz-button");btns.forEach(function(btn){btn.addEventListener("click",complete)});var il=document.getElementById("imglink");if(il){il.addEventListener("click",complete)}}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",setup)}else{setup()}})();
 </script>
 </body>
 </html>`;

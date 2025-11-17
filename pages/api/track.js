@@ -54,18 +54,23 @@ async function upsertSite(domain) {
   }
 }
 
-// Salva evento no Supabase com site_id
-async function saveToSupabase(event, quizId, ip, siteId) {
+// Salva evento no Supabase com site_id e utm_campaign
+async function saveToSupabase(event, quizId, ip, siteId, utmCampaign) {
+  const eventData = {
+    quiz_id: quizId,
+    event: event,
+    ip: ip,
+    site_id: siteId,
+  };
+
+  // Adiciona utm_campaign apenas se fornecido
+  if (utmCampaign) {
+    eventData.utm_campaign = utmCampaign;
+  }
+
   const { error } = await supabase
     .from('events')
-    .insert([
-      {
-        quiz_id: quizId,
-        event: event,
-        ip: ip,
-        site_id: siteId,
-      }
-    ]);
+    .insert([eventData]);
 
   if (error) {
     throw error;
@@ -107,7 +112,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { event, quizId, site: bodySite } = req.body;
+    const { event, quizId, site: bodySite, utm_campaign } = req.body;
 
     // Validação básica
     if (!event || !quizId) {
@@ -133,8 +138,8 @@ export default async function handler(req, res) {
         // 1. Upsert site para obter site_id
         siteId = await upsertSite(site);
 
-        // 2. Salva evento com site_id
-        await saveToSupabase(event, quizId, ip, siteId);
+        // 2. Salva evento com site_id e utm_campaign
+        await saveToSupabase(event, quizId, ip, siteId, utm_campaign);
 
         saved = 'supabase';
       } catch (supabaseError) {
