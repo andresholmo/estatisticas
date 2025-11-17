@@ -120,10 +120,46 @@ async function getStatsFromSupabase(range, startDate, endDate, site) {
 
   console.log(`[Stats] Calling get_quiz_stats RPC with date_limit:`, dateLimit, 'custom:', { startDate, endDate, site });
 
-  // Chama a função SQL que criamos
-  const { data, error } = await supabase.rpc('get_quiz_stats', {
-    date_limit: dateLimit
-  });
+  // Tenta usar a nova função v2 (com start/end dates) se disponível, senão usa a v1 (com date_limit)
+  let data, error;
+  
+  if (startDate && endDate) {
+    const customDates = processCustomDates(startDate, endDate);
+    if (customDates.start && customDates.end) {
+      // Tenta usar get_quiz_stats_v2 (suporta start/end dates)
+      const result = await supabase.rpc('get_quiz_stats_v2', {
+        start_date: customDates.start,
+        end_date: customDates.end
+      });
+      data = result.data;
+      error = result.error;
+      
+      // Se a função v2 não existir, usa a v1 com date_limit
+      if (error && error.message && error.message.includes('does not exist')) {
+        console.log('[Stats] get_quiz_stats_v2 not found, falling back to get_quiz_stats with date_limit');
+        const resultV1 = await supabase.rpc('get_quiz_stats', {
+          date_limit: customDates.start
+        });
+        data = resultV1.data;
+        error = resultV1.error;
+        console.log('[Stats] Note: Using v1 function - endDate filtering not supported');
+      }
+    } else {
+      // Usa função v1 com date_limit
+      const result = await supabase.rpc('get_quiz_stats', {
+        date_limit: dateLimit
+      });
+      data = result.data;
+      error = result.error;
+    }
+  } else {
+    // Usa função v1 com date_limit
+    const result = await supabase.rpc('get_quiz_stats', {
+      date_limit: dateLimit
+    });
+    data = result.data;
+    error = result.error;
+  }
 
   if (error) {
     console.error('[Stats] RPC error:', error);
