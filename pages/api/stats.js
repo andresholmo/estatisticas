@@ -103,6 +103,10 @@ export default async function handler(req, res) {
     // Pega parâmetros do query string
     const { range, site, days, debug, distinct, startDate, endDate } = req.query;
 
+    // Validação de parâmetros (definir selectedRange logo no início)
+    const validRanges = ['hour', 'day', 'week'];
+    const selectedRange = validRanges.includes(range) ? range : 'day';
+
     // Endpoint especial: retorna lista de sites
     if (distinct === 'site') {
       if (!isSupabaseConfigured()) {
@@ -112,10 +116,6 @@ export default async function handler(req, res) {
       const sites = await getSitesList();
       return res.status(200).json({ sites });
     }
-
-    // Validação de parâmetros
-    const validRanges = ['hour', 'day', 'week'];
-    const selectedRange = validRanges.includes(range) ? range : 'day';
 
     // Suporta tanto days (antigo) quanto startDate/endDate (novo)
     let finalStartDate = null;
