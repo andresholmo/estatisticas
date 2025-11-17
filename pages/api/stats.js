@@ -79,6 +79,11 @@ async function getStatsFromSupabaseFallback(startDate, endDate) {
     });
 
     if (error) {
+      // Se get_quiz_stats também falhar, tenta buscar diretamente da tabela (limitado)
+      if (error.code === '57014' || error.message?.includes('does not exist') || error.message?.includes('timeout')) {
+        console.log('[Stats] get_quiz_stats also failed, trying direct query (limited to 1000 rows)');
+        return await getStatsFromDirectQuery(startDate, endDate);
+      }
       console.error('[Stats] Fallback also failed:', error);
       throw error;
     }
@@ -102,6 +107,74 @@ async function getStatsFromSupabaseFallback(startDate, endDate) {
   } catch (error) {
     console.error('[Stats] Fallback failed:', error);
     throw error;
+  }
+}
+
+// Fallback final: busca diretamente da tabela (limitado a 1000 linhas)
+async function getStatsFromDirectQuery(startDate, endDate) {
+  try {
+    let query = supabase
+      .from('events')
+      .select('quiz_id, event')
+      .limit(1000); // Limite do Supabase
+
+    if (startDate) {
+      query = query.gte('created_at', startDate);
+    }
+    if (endDate) {
+      query = query.lte('created_at', endDate);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('[Stats] Direct query failed:', error);
+      throw error;
+    }
+
+    // Calcula stats manualmente
+    const stats = {};
+    (data || []).forEach((row) => {
+      const quizId = row.quiz_id;
+      const event = row.event;
+
+      if (!stats[quizId]) {
+        stats[quizId] = { views: 0, completes: 0 };
+      }
+
+      if (event === 'view') {
+        stats[quizId].views++;
+      } else if (event === 'complete') {
+        stats[quizId].completes++;
+      }
+    });
+
+    const formattedStats = Object.entries(stats).map(([quizId, data]) => {
+      const conversionRate = data.views > 0
+        ? ((data.completes / data.views) * 100).toFixed(1)
+        : '0.0';
+
+      return {
+        quizId,
+        views: data.views,
+        completes: data.completes,
+        conversionRate: `${conversionRate}%`
+      };
+    }).sort((a, b) => b.views - a.views);
+
+    console.log('[Stats] Direct query returned', formattedStats.length, 'quizzes (limited to 1000 events)');
+
+    return {
+      bucketed: [],
+      totals: formattedStats
+    };
+  } catch (error) {
+    console.error('[Stats] Direct query failed:', error);
+    // Retorna vazio ao invés de lançar erro
+    return {
+      bucketed: [],
+      totals: []
+    };
   }
 }
 
