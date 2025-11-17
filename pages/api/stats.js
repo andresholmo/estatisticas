@@ -1,182 +1,45 @@
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 // Busca estatísticas agregadas do Supabase usando SQL functions v3 (com datetime)
-// Com fallback para função mais simples se v3 der timeout
 async function getStatsFromSupabaseV3(range, site, startDate, endDate) {
-  try {
-    // Chama get_quiz_stats_v3 (dados bucketed para gráficos)
-    const { data: bucketed, error: bucketedError } = await supabase.rpc('get_quiz_stats_v3', {
-      p_range: range || 'day',
-      p_site_domain: site || null,
-      p_start_date: startDate || null,
-      p_end_date: endDate || null
-    });
+  console.log('[Stats] Calling get_quiz_stats_v3 with:', { range, site, startDate, endDate });
+  
+  // Chama get_quiz_stats_v3 (dados bucketed para gráficos)
+  const { data: bucketed, error: bucketedError } = await supabase.rpc('get_quiz_stats_v3', {
+    p_range: range || 'day',
+    p_site_domain: site || null,
+    p_start_date: startDate || null,
+    p_end_date: endDate || null
+  });
 
-    if (bucketedError) {
-      // Se for timeout ou função não existe, usa fallback
-      if (bucketedError.code === '57014' || bucketedError.message?.includes('does not exist') || bucketedError.message?.includes('timeout')) {
-        console.log('[Stats] get_quiz_stats_v3 failed, using fallback get_quiz_stats');
-        return await getStatsFromSupabaseFallback(startDate, endDate);
-      }
-      console.error('[Stats] Error calling get_quiz_stats_v3:', bucketedError);
-      throw bucketedError;
-    }
-
-    // Chama get_quiz_totals_v3 (totais para ranking/tabela)
-    const { data: totals, error: totalsError } = await supabase.rpc('get_quiz_totals_v3', {
-      p_site_domain: site || null,
-      p_start_date: startDate || null,
-      p_end_date: endDate || null
-    });
-
-    if (totalsError) {
-      // Se for timeout ou função não existe, usa fallback
-      if (totalsError.code === '57014' || totalsError.message?.includes('does not exist') || totalsError.message?.includes('timeout')) {
-        console.log('[Stats] get_quiz_totals_v3 failed, using fallback get_quiz_stats');
-        return await getStatsFromSupabaseFallback(startDate, endDate);
-      }
-      console.error('[Stats] Error calling get_quiz_totals_v3:', totalsError);
-      throw totalsError;
-    }
-
-    console.log(`[Stats] Fetched ${bucketed?.length || 0} bucketed rows, ${totals?.length || 0} total rows`);
-    console.log(`[Stats] Period: ${startDate || 'default'} to ${endDate || 'now'}`);
-
-    return {
-      bucketed: bucketed || [],
-      totals: totals || []
-    };
-  } catch (error) {
-    // Se for timeout, tenta fallback
-    if (error.code === '57014' || error.message?.includes('timeout')) {
-      console.log('[Stats] Timeout error, using fallback');
-      return await getStatsFromSupabaseFallback(startDate, endDate);
-    }
-    console.error('[Stats] Error fetching from Supabase v3:', error);
-    throw error;
+  if (bucketedError) {
+    console.error('[Stats] Error calling get_quiz_stats_v3:', bucketedError);
+    throw bucketedError;
   }
+
+  console.log('[Stats] get_quiz_stats_v3 returned', bucketed?.length || 0, 'bucketed rows');
+
+  // Chama get_quiz_totals_v3 (totais para ranking/tabela)
+  const { data: totals, error: totalsError } = await supabase.rpc('get_quiz_totals_v3', {
+    p_site_domain: site || null,
+    p_start_date: startDate || null,
+    p_end_date: endDate || null
+  });
+
+  if (totalsError) {
+    console.error('[Stats] Error calling get_quiz_totals_v3:', totalsError);
+    throw totalsError;
+  }
+
+  console.log('[Stats] get_quiz_totals_v3 returned', totals?.length || 0, 'total rows');
+  console.log(`[Stats] Period: ${startDate || 'default'} to ${endDate || 'now'}`);
+
+  return {
+    bucketed: bucketed || [],
+    totals: totals || []
+  };
 }
 
-// Fallback: usa função get_quiz_stats mais simples (sem bucketing)
-async function getStatsFromSupabaseFallback(startDate, endDate) {
-  try {
-    // Calcula date_limit baseado nas datas
-    let dateLimit = null;
-    if (startDate) {
-      dateLimit = startDate;
-    } else if (endDate) {
-      // Se só tem endDate, usa 30 dias antes
-      const end = new Date(endDate);
-      end.setDate(end.getDate() - 30);
-      dateLimit = end.toISOString();
-    }
-
-    console.log('[Stats] Using fallback get_quiz_stats with date_limit:', dateLimit);
-
-    // Chama função SQL mais simples
-    const { data, error } = await supabase.rpc('get_quiz_stats', {
-      date_limit: dateLimit
-    });
-
-    if (error) {
-      // Se get_quiz_stats também falhar, tenta buscar diretamente da tabela (limitado)
-      if (error.code === '57014' || error.message?.includes('does not exist') || error.message?.includes('timeout')) {
-        console.log('[Stats] get_quiz_stats also failed, trying direct query (limited to 1000 rows)');
-        return await getStatsFromDirectQuery(startDate, endDate);
-      }
-      console.error('[Stats] Fallback also failed:', error);
-      throw error;
-    }
-
-    // Converte dados agregados para formato esperado
-    const stats = calculateStatsFromAggregated(data || []);
-
-    // Se há endDate, filtra manualmente (limitado, mas funciona)
-    let filteredStats = stats;
-    if (startDate && endDate) {
-      // Nota: Como são dados agregados, não podemos filtrar por endDate perfeitamente
-      // Mas pelo menos retornamos algo
-      console.log('[Stats] Note: endDate filtering not perfect in fallback mode');
-    }
-
-    // Formata como totals (bucketed vazio)
-    return {
-      bucketed: [],
-      totals: filteredStats
-    };
-  } catch (error) {
-    console.error('[Stats] Fallback failed:', error);
-    throw error;
-  }
-}
-
-// Fallback final: busca diretamente da tabela (limitado a 1000 linhas)
-async function getStatsFromDirectQuery(startDate, endDate) {
-  try {
-    let query = supabase
-      .from('events')
-      .select('quiz_id, event')
-      .limit(1000); // Limite do Supabase
-
-    if (startDate) {
-      query = query.gte('created_at', startDate);
-    }
-    if (endDate) {
-      query = query.lte('created_at', endDate);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('[Stats] Direct query failed:', error);
-      throw error;
-    }
-
-    // Calcula stats manualmente
-    const stats = {};
-    (data || []).forEach((row) => {
-      const quizId = row.quiz_id;
-      const event = row.event;
-
-      if (!stats[quizId]) {
-        stats[quizId] = { views: 0, completes: 0 };
-      }
-
-      if (event === 'view') {
-        stats[quizId].views++;
-      } else if (event === 'complete') {
-        stats[quizId].completes++;
-      }
-    });
-
-    const formattedStats = Object.entries(stats).map(([quizId, data]) => {
-      const conversionRate = data.views > 0
-        ? ((data.completes / data.views) * 100).toFixed(1)
-        : '0.0';
-
-      return {
-        quizId,
-        views: data.views,
-        completes: data.completes,
-        conversionRate: `${conversionRate}%`
-      };
-    }).sort((a, b) => b.views - a.views);
-
-    console.log('[Stats] Direct query returned', formattedStats.length, 'quizzes (limited to 1000 events)');
-
-    return {
-      bucketed: [],
-      totals: formattedStats
-    };
-  } catch (error) {
-    console.error('[Stats] Direct query failed:', error);
-    // Retorna vazio ao invés de lançar erro
-    return {
-      bucketed: [],
-      totals: []
-    };
-  }
-}
 
 // Calcula estatísticas a partir de dados agregados
 function calculateStatsFromAggregated(aggregatedData) {
@@ -376,24 +239,10 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Error getting stats:', error);
-    
-    // Se for erro de timeout ou função não existe, retorna dados vazios ao invés de erro 500
-    if (error.code === '57014' || error.message?.includes('does not exist') || error.message?.includes('timeout')) {
-      console.log('[Stats] Returning empty data due to timeout/function not found');
-      return res.status(200).json({
-        range: selectedRange || 'day',
-        site: site || null,
-        startDate: finalStartDate,
-        endDate: finalEndDate,
-        bucketed: [],
-        totals: [],
-        error: 'Function timeout or not found'
-      });
-    }
-    
     return res.status(500).json({
       error: 'Internal server error',
-      details: error.message
+      details: error.message,
+      code: error.code
     });
   }
 }
