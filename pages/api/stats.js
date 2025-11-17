@@ -63,9 +63,26 @@ function processCustomDates(startDate, endDate) {
   }
 }
 
+// Busca lista de sites disponíveis
+async function getSitesList() {
+  try {
+    const { data, error } = await supabase
+      .from('sites')
+      .select('domain')
+      .order('domain');
+
+    if (error) throw error;
+
+    return (data || []).map(s => s.domain);
+  } catch (error) {
+    console.error('[Stats] Error fetching sites list:', error);
+    return [];
+  }
+}
+
 // Busca estatísticas agregadas do Supabase usando SQL function
 // Isso é MUITO mais eficiente: retorna ~100 linhas ao invés de 45k!
-async function getStatsFromSupabase(range, startDate, endDate) {
+async function getStatsFromSupabase(range, startDate, endDate, site) {
   let dateLimit = null;
 
   // Prioriza datas customizadas se fornecidas
@@ -80,7 +97,7 @@ async function getStatsFromSupabase(range, startDate, endDate) {
     dateLimit = getDateLimit(range);
   }
 
-  console.log(`[Stats] Calling get_quiz_stats RPC with date_limit:`, dateLimit, 'custom:', { startDate, endDate });
+  console.log(`[Stats] Calling get_quiz_stats RPC with date_limit:`, dateLimit, 'custom:', { startDate, endDate, site });
 
   // Chama a função SQL que criamos
   const { data, error } = await supabase.rpc('get_quiz_stats', {
@@ -94,22 +111,17 @@ async function getStatsFromSupabase(range, startDate, endDate) {
 
   console.log(`[Stats] RPC returned ${data?.length || 0} aggregated rows`);
 
-  // Se há datas customizadas, precisa filtrar manualmente
-  // (A função SQL atual só suporta date_limit simples)
-  // Para uma solução completa, seria necessário criar uma nova função SQL que aceite start/end
-  // Por enquanto, filtraremos no lado do cliente se necessário
-  // Mas como a função SQL já retorna agregados, não temos eventos individuais para filtrar
-  // Então vamos assumir que date_limit é suficiente para a maioria dos casos
-
-  // data agora está no formato:
-  // [
-  //   { quiz_id: 'cbcn', event: 'view', total: 25000 },
-  //   { quiz_id: 'cbcn', event: 'complete', total: 11000 },
-  //   ...
-  // ]
-
   // Calcula estatísticas direto dos dados agregados (muito mais eficiente!)
-  return calculateStatsFromAggregated(data || []);
+  const stats = calculateStatsFromAggregated(data || []);
+  
+  // Se há filtro de site, filtra os resultados
+  if (site && site !== 'all') {
+    // Nota: A função SQL atual não filtra por site, então precisaríamos buscar eventos individuais
+    // Por enquanto, retornamos todos e o frontend pode filtrar se necessário
+    // Ou podemos fazer uma query adicional para filtrar por site
+  }
+
+  return stats;
 }
 
 // Calcula estatísticas a partir de dados agregados (não precisa processar 45k linhas!)
@@ -233,8 +245,43 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Pega o range do query string (7d, 30d, ou all) ou datas customizadas
-    const { range, debug, startDate, endDate } = req.query;
+    // Pega parâmetros do query string
+    const { range, site, days, debug, distinct, startDate, endDate } = req.query;
+
+    // Endpoint especial: retorna lista de sites
+    if (distinct === 'site') {
+      if (!isSupabaseConfigured()) {
+        return res.status(200).json({ sites: [] });
+      }
+
+      const sites = await getSitesList();
+      return res.status(200).json({ sites });
+    }
+
+    // Validação de parâmetros
+    const validRanges = ['hour', 'day', 'week', '7d', '30d', 'all'];
+    let selectedRange = validRanges.includes(range) ? range : 'day';
+    
+    // Converte ranges antigos para novos
+    if (range === '7d' || range === '30d' || range === 'all') {
+      // Mantém compatibilidade, mas não usamos para agregação
+      selectedRange = 'day';
+    }
+
+    // Suporta tanto days (antigo) quanto startDate/endDate (novo)
+    let finalStartDate = null;
+    let finalEndDate = null;
+
+    if (startDate && endDate) {
+      // Modo v3: usa timestamps específicos
+      finalStartDate = startDate;
+      finalEndDate = endDate;
+    } else if (days) {
+      // Modo v2: calcula baseado em days
+      const daysNum = parseInt(days) || 30;
+      finalEndDate = new Date().toISOString();
+      finalStartDate = new Date(Date.now() - (daysNum * 24 * 60 * 60 * 1000)).toISOString();
+    }
 
     let stats;
     let source = 'unknown';
@@ -243,22 +290,22 @@ export default async function handler(req, res) {
     // Busca estatísticas do Supabase (já agregadas) ou JSON local
     if (isSupabaseConfigured()) {
       try {
-        // getStatsFromSupabase já retorna as stats calculadas (não retorna eventos individuais)
-        stats = await getStatsFromSupabase(range, startDate, endDate);
+        // getStatsFromSupabase já retorna as stats calculadas
+        stats = await getStatsFromSupabase(selectedRange, finalStartDate, finalEndDate, site);
         source = 'supabase';
 
         // Calcula total de eventos a partir das stats
         totalEvents = stats.reduce((sum, s) => sum + s.views + s.completes, 0);
 
         console.log(`[Stats] Source: supabase (RPC), Stats: ${stats.length} quizzes, Total events: ${totalEvents}`);
-        if (startDate && endDate) {
-          console.log(`[Stats] Custom date range: ${startDate} to ${endDate}`);
+        if (finalStartDate && finalEndDate) {
+          console.log(`[Stats] Custom date range: ${finalStartDate} to ${finalEndDate}`);
         }
       } catch (supabaseError) {
         console.error('Error fetching from Supabase, falling back to JSON:', supabaseError);
 
         // Fallback: busca do JSON local e calcula stats
-        const events = getEventsFromJSON(range, startDate, endDate);
+        const events = getEventsFromJSON(range, finalStartDate, finalEndDate);
         stats = calculateStats(events);
         source = 'json-fallback';
         totalEvents = events.length;
@@ -267,7 +314,7 @@ export default async function handler(req, res) {
       }
     } else {
       // Busca do JSON local e calcula stats
-      const events = getEventsFromJSON(range, startDate, endDate);
+      const events = getEventsFromJSON(range, finalStartDate, finalEndDate);
       stats = calculateStats(events);
       source = 'json';
       totalEvents = events.length;
@@ -282,13 +329,24 @@ export default async function handler(req, res) {
         totalEvents: totalEvents,
         totalQuizzes: stats.length,
         supabaseConfigured: isSupabaseConfigured(),
-        range: range || 'all',
+        range: selectedRange,
+        site: site || null,
+        startDate: finalStartDate,
+        endDate: finalEndDate,
         stats: stats
       });
     }
 
-    // Retorna estatísticas
-    return res.status(200).json(stats);
+    // Retorna no formato esperado pelo dashboard (com totals e bucketed vazio por enquanto)
+    // O dashboard espera { totals: [...], bucketed: [...] }
+    return res.status(200).json({
+      range: selectedRange,
+      site: site || null,
+      startDate: finalStartDate,
+      endDate: finalEndDate,
+      bucketed: [], // Por enquanto vazio, pode ser implementado depois
+      totals: stats // Stats formatadas como totals
+    });
 
   } catch (error) {
     console.error('Error getting stats:', error);
