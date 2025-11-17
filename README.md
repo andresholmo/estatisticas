@@ -578,6 +578,3 @@ Propriedade do Grupo UP Mídia. Todos os direitos reservados.
 ---
 
 **Desenvolvido com ❤️ para o Grupo UP Mídia**
-
----
-*Última atualização: Teste do hook post-commit*
