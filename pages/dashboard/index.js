@@ -137,12 +137,38 @@ export default function Dashboard() {
       dedupingInterval: 2000,
       refreshWhenHidden: true,
       refreshWhenOffline: false,
+      onError: (err) => {
+        console.error('[Dashboard] SWR Error:', err);
+      },
+      onSuccess: (data) => {
+        console.log('[Dashboard] SWR Success:', { 
+          url: statsUrl, 
+          hasTotals: !!data?.totals, 
+          totalsLength: data?.totals?.length || 0,
+          dataKeys: Object.keys(data || {})
+        });
+      }
     }
   );
 
   // Extrai totals e bucketed da resposta v2
   const stats = statsResponse?.totals || [];
   const sites = sitesData?.sites || [];
+
+  // Debug: log da resposta
+  useEffect(() => {
+    if (statsResponse) {
+      console.log('[Dashboard] Stats Response:', {
+        hasTotals: !!statsResponse.totals,
+        totalsLength: statsResponse.totals?.length || 0,
+        statsLength: stats.length,
+        responseKeys: Object.keys(statsResponse)
+      });
+    }
+    if (error) {
+      console.error('[Dashboard] Error:', error);
+    }
+  }, [statsResponse, error, stats.length]);
 
   // Calcula totais
   const totalQuizzes = stats.length;
