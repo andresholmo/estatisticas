@@ -39,6 +39,7 @@ async function getStatsFromSupabaseV3(range, site, startDate, endDate) {
     totals: totals || []
   };
 }
+
 // Formata dados bucketed para o frontend
 function formatBucketed(bucketedData) {
   return bucketedData.map(row => ({
