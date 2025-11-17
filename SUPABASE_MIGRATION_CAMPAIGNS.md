@@ -32,37 +32,49 @@ CREATE OR REPLACE FUNCTION get_quiz_campaigns(
   p_end_date timestamptz DEFAULT NULL
 )
 RETURNS TABLE (
-  utm_campaign text,
+  campaign text,  -- ✅ CORRIGIDO: campaign (não utm_campaign)
   views bigint,
   completes bigint,
   conversion_rate numeric
-) AS $$
+)
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_start_date timestamptz;
+  v_end_date timestamptz;
 BEGIN
+  -- Define datas padrão se não fornecidas (últimos 30 dias)
+  v_end_date := COALESCE(p_end_date, NOW());
+  v_start_date := COALESCE(p_start_date, v_end_date - INTERVAL '30 days');
+
+  -- Query otimizada usando COUNT(*) FILTER
   RETURN QUERY
   WITH campaign_stats AS (
     SELECT
       COALESCE(e.utm_campaign, 'Sem campanha') as campaign,
-      SUM(CASE WHEN e.event = 'view' THEN 1 ELSE 0 END)::bigint as views,
-      SUM(CASE WHEN e.event = 'complete' THEN 1 ELSE 0 END)::bigint as completes
+      COUNT(*) FILTER (WHERE e.event = 'view')::bigint as views,
+      COUNT(*) FILTER (WHERE e.event = 'complete')::bigint as completes
     FROM events e
-    WHERE e.quiz_id = p_quiz_id
-      AND (p_start_date IS NULL OR e.created_at >= p_start_date)
-      AND (p_end_date IS NULL OR e.created_at <= p_end_date)
+    WHERE
+      e.quiz_id = p_quiz_id
+      AND e.created_at >= v_start_date
+      AND e.created_at <= v_end_date
     GROUP BY COALESCE(e.utm_campaign, 'Sem campanha')
   )
   SELECT
-    cs.campaign,
+    cs.campaign,  -- ✅ Consistente com RETURNS TABLE
     cs.views,
     cs.completes,
     CASE
       WHEN cs.views > 0 THEN
         ROUND((cs.completes::numeric / cs.views::numeric) * 100, 2)
       ELSE 0
-    END as conversion_rate
+    END::numeric as conversion_rate
   FROM campaign_stats cs
   ORDER BY cs.views DESC;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- Permissões
 GRANT EXECUTE ON FUNCTION get_quiz_campaigns(text, timestamptz, timestamptz) TO anon, authenticated;
@@ -86,7 +98,7 @@ SELECT * FROM get_quiz_campaigns(
 
 Você DEVE ver algo como:
 ```
-utm_campaign                    | views | completes | conversion_rate
+campaign                        | views | completes | conversion_rate
 --------------------------------|-------|-----------|----------------
 SDM-04-SDM-WA193-171125-BR-DDC  | 1250  | 450       | 36.00
 SDM-05-SDM-WA194-171126-BR-DDC  | 980   | 320       | 32.65
