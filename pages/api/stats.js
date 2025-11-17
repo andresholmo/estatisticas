@@ -39,42 +39,6 @@ async function getStatsFromSupabaseV3(range, site, startDate, endDate) {
     totals: totals || []
   };
 }
-
-
-// Calcula estatísticas a partir de dados agregados
-function calculateStatsFromAggregated(aggregatedData) {
-  const stats = {};
-
-  aggregatedData.forEach((row) => {
-    const quizId = row.quiz_id;
-    const event = row.event;
-    const count = parseInt(row.count || row.total || 0);
-
-    if (!stats[quizId]) {
-      stats[quizId] = { views: 0, completes: 0 };
-    }
-
-    if (event === 'view') {
-      stats[quizId].views = count;
-    } else if (event === 'complete') {
-      stats[quizId].completes = count;
-    }
-  });
-
-  return Object.entries(stats).map(([quizId, data]) => {
-    const conversionRate = data.views > 0
-      ? ((data.completes / data.views) * 100).toFixed(1)
-      : '0.0';
-
-    return {
-      quizId,
-      views: data.views,
-      completes: data.completes,
-      conversionRate: `${conversionRate}%`
-    };
-  }).sort((a, b) => b.views - a.views);
-}
-
 // Formata dados bucketed para o frontend
 function formatBucketed(bucketedData) {
   return bucketedData.map(row => ({
