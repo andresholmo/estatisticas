@@ -132,16 +132,17 @@ function calculateStatsFromAggregated(aggregatedData) {
   aggregatedData.forEach((row) => {
     const quizId = row.quiz_id;
     const event = row.event;
-    const total = parseInt(row.total || 0);
+    // A função SQL retorna 'count', não 'total'
+    const count = parseInt(row.count || row.total || 0);
 
     if (!stats[quizId]) {
       stats[quizId] = { views: 0, completes: 0 };
     }
 
     if (event === 'view') {
-      stats[quizId].views = total;
+      stats[quizId].views = count;
     } else if (event === 'complete') {
-      stats[quizId].completes = total;
+      stats[quizId].completes = count;
     }
   });
 
