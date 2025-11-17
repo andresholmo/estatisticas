@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import Head from 'next/head';
 import ConversionChart from '../../components/Chart';
@@ -13,13 +13,6 @@ export default function Dashboard() {
   const [authError, setAuthError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [range, setRange] = useState('all');
-  
-  // Filtros de data/hora customizados
-  const [useCustomDates, setUseCustomDates] = useState(false);
-  const [startDate, setStartDate] = useState('');
-  const [startTime, setStartTime] = useState('00:00');
-  const [endDate, setEndDate] = useState('');
-  const [endTime, setEndTime] = useState('23:59');
 
   // Verifica autenticação no localStorage
   useEffect(() => {
@@ -54,77 +47,9 @@ export default function Dashboard() {
     verifyAuth();
   }, []);
 
-  // Função helper para presets de data/hora
-  const applyPreset = (preset) => {
-    const now = new Date();
-    let start, end;
-
-    switch (preset) {
-      case 'today':
-        start = new Date(now);
-        start.setHours(0, 0, 0, 0);
-        end = new Date(now);
-        end.setHours(23, 59, 59, 999);
-        break;
-      case 'yesterday':
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        start = new Date(yesterday);
-        start.setHours(0, 0, 0, 0);
-        end = new Date(yesterday);
-        end.setHours(23, 59, 59, 999);
-        break;
-      case 'last-hour':
-        start = new Date(now.getTime() - 60 * 60 * 1000);
-        end = now;
-        break;
-      case 'last-24h':
-        start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        end = now;
-        break;
-      case 'last-7d':
-        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        end = now;
-        break;
-      case 'last-30d':
-        start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        end = now;
-        break;
-      default:
-        return;
-    }
-
-    setStartDate(start.toISOString().split('T')[0]);
-    setStartTime(start.toTimeString().slice(0, 5));
-    setEndDate(end.toISOString().split('T')[0]);
-    setEndTime(end.toTimeString().slice(0, 5));
-    setUseCustomDates(true);
-    setRange('custom'); // Marca como custom para não usar range padrão
-  };
-
-  // Constrói URL da API com filtros
-  const statsUrl = useMemo(() => {
-    if (!isAuthenticated) return null;
-
-    const params = new URLSearchParams();
-    
-    if (useCustomDates && startDate && endDate) {
-      // Modo customizado: usa timestamps específicos
-      const start = new Date(`${startDate}T${startTime}`).toISOString();
-      const end = new Date(`${endDate}T${endTime}`).toISOString();
-      params.append('startDate', start);
-      params.append('endDate', end);
-    } else {
-      // Modo padrão: usa range (7d, 30d, all)
-      params.append('range', range);
-    }
-
-    return `/api/stats?${params.toString()}`;
-  }, [isAuthenticated, range, useCustomDates, startDate, startTime, endDate, endTime]);
-
   // Atualiza a cada 5 segundos com filtro de data
   const { data: stats, error, isLoading } = useSWR(
-    statsUrl,
+    isAuthenticated ? `/api/stats?range=${range}` : null,
     fetcher,
     {
       refreshInterval: 5000,
@@ -292,188 +217,37 @@ export default function Dashboard() {
             </div>
 
             {/* Filtros de data */}
-            <div className="mt-6 space-y-4">
-              {/* Filtros rápidos */}
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => {
-                    setUseCustomDates(false);
-                    setRange('7d');
-                  }}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    !useCustomDates && range === '7d'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Últimos 7 dias
-                </button>
-                <button
-                  onClick={() => {
-                    setUseCustomDates(false);
-                    setRange('30d');
-                  }}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    !useCustomDates && range === '30d'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Últimos 30 dias
-                </button>
-                <button
-                  onClick={() => {
-                    setUseCustomDates(false);
-                    setRange('all');
-                  }}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    !useCustomDates && range === 'all'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Todos
-                </button>
-                <button
-                  onClick={() => applyPreset('today')}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    useCustomDates && range === 'custom'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Hoje
-                </button>
-                <button
-                  onClick={() => applyPreset('yesterday')}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    useCustomDates && range === 'custom'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Ontem
-                </button>
-              </div>
-
-              {/* Filtros customizados */}
-              <div className="border-t pt-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <input
-                    type="checkbox"
-                    id="custom-dates-toggle"
-                    checked={useCustomDates}
-                    onChange={(e) => {
-                      setUseCustomDates(e.target.checked);
-                      if (!e.target.checked) {
-                        setRange('all');
-                      }
-                    }}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="custom-dates-toggle" className="text-sm font-medium text-gray-700">
-                    Usar intervalo de data/hora customizado
-                  </label>
-                </div>
-
-                {useCustomDates && (
-                  <>
-                    {/* Presets rápidos */}
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      <button
-                        onClick={() => applyPreset('last-hour')}
-                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                      >
-                        Última hora
-                      </button>
-                      <button
-                        onClick={() => applyPreset('today')}
-                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                      >
-                        Hoje
-                      </button>
-                      <button
-                        onClick={() => applyPreset('yesterday')}
-                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                      >
-                        Ontem
-                      </button>
-                      <button
-                        onClick={() => applyPreset('last-24h')}
-                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                      >
-                        Últimas 24h
-                      </button>
-                      <button
-                        onClick={() => applyPreset('last-7d')}
-                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                      >
-                        Últimos 7 dias
-                      </button>
-                      <button
-                        onClick={() => applyPreset('last-30d')}
-                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                      >
-                        Últimos 30 dias
-                      </button>
-                    </div>
-
-                    {/* Date/Time pickers */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Data/Hora Início
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => {
-                              setStartDate(e.target.value);
-                              setRange('custom');
-                            }}
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                          <input
-                            type="time"
-                            value={startTime}
-                            onChange={(e) => {
-                              setStartTime(e.target.value);
-                              setRange('custom');
-                            }}
-                            className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Data/Hora Fim
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => {
-                              setEndDate(e.target.value);
-                              setRange('custom');
-                            }}
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                          <input
-                            type="time"
-                            value={endTime}
-                            onChange={(e) => {
-                              setEndTime(e.target.value);
-                              setRange('custom');
-                            }}
-                            className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+            <div className="mt-6 flex gap-2 flex-wrap">
+              <button
+                onClick={() => setRange('7d')}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  range === '7d'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Últimos 7 dias
+              </button>
+              <button
+                onClick={() => setRange('30d')}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  range === '30d'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Últimos 30 dias
+              </button>
+              <button
+                onClick={() => setRange('all')}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  range === 'all'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Todos
+              </button>
             </div>
           </div>
 
