@@ -111,14 +111,8 @@ export default async function handler(req, res) {
     }
 
     // Validação de parâmetros
-    const validRanges = ['hour', 'day', 'week', '7d', '30d', 'all'];
-    let selectedRange = validRanges.includes(range) ? range : 'day';
-    
-    // Converte ranges antigos para novos
-    if (range === '7d' || range === '30d' || range === 'all') {
-      // Mantém compatibilidade, mas não usamos para agregação
-      selectedRange = 'day';
-    }
+    const validRanges = ['hour', 'day', 'week'];
+    const selectedRange = validRanges.includes(range) ? range : 'day';
 
     // Suporta tanto days (antigo) quanto startDate/endDate (novo)
     let finalStartDate = null;
@@ -135,69 +129,64 @@ export default async function handler(req, res) {
       finalStartDate = new Date(Date.now() - (daysNum * 24 * 60 * 60 * 1000)).toISOString();
     }
 
-    let stats;
-    let source = 'unknown';
-    let totalEvents = 0;
-
-    // Busca estatísticas do Supabase (já agregadas) ou JSON local
-    if (isSupabaseConfigured()) {
-      try {
-        // getStatsFromSupabase já retorna as stats calculadas
-        stats = await getStatsFromSupabase(selectedRange, finalStartDate, finalEndDate, site);
-        source = 'supabase';
-
-        // Calcula total de eventos a partir das stats
-        totalEvents = stats.reduce((sum, s) => sum + s.views + s.completes, 0);
-
-        console.log(`[Stats] Source: supabase (RPC), Stats: ${stats.length} quizzes, Total events: ${totalEvents}`);
-        if (finalStartDate && finalEndDate) {
-          console.log(`[Stats] Custom date range: ${finalStartDate} to ${finalEndDate}`);
-        }
-      } catch (supabaseError) {
-        console.error('Error fetching from Supabase, falling back to JSON:', supabaseError);
-
-        // Fallback: busca do JSON local e calcula stats
-        const events = getEventsFromJSON(range, finalStartDate, finalEndDate);
-        stats = calculateStats(events);
-        source = 'json-fallback';
-        totalEvents = events.length;
-
-        console.log(`[Stats] Source: json-fallback, Events: ${totalEvents}`);
-      }
-    } else {
-      // Busca do JSON local e calcula stats
-      const events = getEventsFromJSON(range, finalStartDate, finalEndDate);
-      stats = calculateStats(events);
-      source = 'json';
-      totalEvents = events.length;
-
-      console.log(`[Stats] Source: json, Events: ${totalEvents}`);
-    }
-
-    // Se debug=true, retorna informações adicionais
-    if (debug === 'true') {
+    if (!isSupabaseConfigured()) {
       return res.status(200).json({
-        source: source,
-        totalEvents: totalEvents,
-        totalQuizzes: stats.length,
-        supabaseConfigured: isSupabaseConfigured(),
         range: selectedRange,
         site: site || null,
         startDate: finalStartDate,
         endDate: finalEndDate,
-        stats: stats
+        bucketed: [],
+        totals: [],
+        error: 'Supabase not configured'
       });
     }
 
-    // Retorna no formato esperado pelo dashboard (com totals e bucketed vazio por enquanto)
-    // O dashboard espera { totals: [...], bucketed: [...] }
+    // Busca dados do Supabase v3
+    const { bucketed, totals } = await getStatsFromSupabaseV3(
+      selectedRange,
+      site || null,
+      finalStartDate,
+      finalEndDate
+    );
+
+    // Formata dados
+    const formattedBucketed = formatBucketed(bucketed);
+    const formattedTotals = formatTotals(totals);
+
+    // Calcula totais gerais
+    const totalEvents = formattedTotals.reduce((sum, t) => sum + t.views + t.completes, 0);
+    const totalViews = formattedTotals.reduce((sum, t) => sum + t.views, 0);
+    const totalCompletes = formattedTotals.reduce((sum, t) => sum + t.completes, 0);
+    const overallConversionRate = totalViews > 0
+      ? ((totalCompletes / totalViews) * 100).toFixed(1)
+      : '0.0';
+
+    // Se debug=true, retorna informações adicionais
+    if (debug === 'true') {
+      return res.status(200).json({
+        source: 'supabase-v3',
+        range: selectedRange,
+        site: site || null,
+        startDate: finalStartDate,
+        endDate: finalEndDate,
+        totalEvents,
+        totalViews,
+        totalCompletes,
+        overallConversionRate: `${overallConversionRate}%`,
+        totalQuizzes: formattedTotals.length,
+        bucketed: formattedBucketed,
+        totals: formattedTotals
+      });
+    }
+
+    // Resposta normal
     return res.status(200).json({
       range: selectedRange,
       site: site || null,
       startDate: finalStartDate,
       endDate: finalEndDate,
-      bucketed: [], // Por enquanto vazio, pode ser implementado depois
-      totals: stats // Stats formatadas como totals
+      bucketed: formattedBucketed,
+      totals: formattedTotals
     });
 
   } catch (error) {
