@@ -66,12 +66,29 @@ function processCustomDates(startDate, endDate) {
 // Busca lista de sites disponíveis
 async function getSitesList() {
   try {
+    // Tenta buscar da tabela sites
     const { data, error } = await supabase
       .from('sites')
       .select('domain')
       .order('domain');
 
-    if (error) throw error;
+    if (error) {
+      // Se a tabela não existe, tenta buscar domínios únicos dos eventos
+      console.log('[Stats] Sites table not found, trying to get from events');
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select('site')
+        .not('site', 'is', null);
+
+      if (eventsError) {
+        console.error('[Stats] Error fetching sites from events:', eventsError);
+        return [];
+      }
+
+      // Extrai domínios únicos
+      const uniqueSites = [...new Set((eventsData || []).map(e => e.site).filter(Boolean))];
+      return uniqueSites.sort();
+    }
 
     return (data || []).map(s => s.domain);
   } catch (error) {
