@@ -153,12 +153,16 @@ function formatBucketed(bucketedData) {
 
 // Formata dados de totais para o frontend
 function formatTotals(totalsData) {
+  if (!totalsData || !Array.isArray(totalsData)) {
+    return [];
+  }
+  
   return totalsData.map(row => ({
-    site: row.site,
-    quizId: row.quiz_id,
+    site: row.site || null,
+    quizId: row.quiz_id || row.quizId || '',
     views: parseInt(row.views) || 0,
     completes: parseInt(row.completes) || 0,
-    conversionRate: `${row.conversion_rate || 0}%`
+    conversionRate: row.conversionRate || `${parseFloat(row.conversion_rate || 0).toFixed(1)}%`
   }));
 }
 
@@ -247,9 +251,19 @@ export default async function handler(req, res) {
       finalEndDate
     );
 
-    // Formata dados
-    const formattedBucketed = formatBucketed(bucketed);
-    const formattedTotals = formatTotals(totals);
+    // Formata dados (com tratamento de erro)
+    let formattedBucketed = [];
+    let formattedTotals = [];
+    
+    try {
+      formattedBucketed = formatBucketed(bucketed || []);
+      formattedTotals = formatTotals(totals || []);
+    } catch (formatError) {
+      console.error('[Stats] Error formatting data:', formatError);
+      // Se der erro na formatação, tenta usar os dados diretamente
+      formattedTotals = Array.isArray(totals) ? totals : [];
+      formattedBucketed = Array.isArray(bucketed) ? bucketed : [];
+    }
 
     // Calcula totais gerais
     const totalEvents = formattedTotals.reduce((sum, t) => sum + t.views + t.completes, 0);
