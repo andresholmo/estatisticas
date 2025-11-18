@@ -66,7 +66,7 @@ async function isRateLimited(ipHash) {
 
     const { data, error } = await supabase
       .from('events')
-      .select('id', { count: 'exact', head: true })
+      .select('id')
       .eq('ip_hash', ipHash)
       .gte('created_at', oneMinuteAgo);
 
