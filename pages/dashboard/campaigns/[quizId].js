@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import useSWR from 'swr';
 import Head from 'next/head';
@@ -11,6 +11,13 @@ export default function CampaignsPage() {
   const { quizId } = router.query;
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  // Filtros de data/hora (igual ao dashboard principal)
+  const [useCustomDates, setUseCustomDates] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [startTime, setStartTime] = useState('00:00');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('23:59');
 
   // Verifica autenticação no localStorage
   useEffect(() => {
@@ -44,9 +51,66 @@ export default function CampaignsPage() {
     verifyAuth();
   }, []);
 
-  // Busca campanhas do quiz
-  const { data, error, isLoading } = useSWR(
-    isAuthenticated && quizId ? `/api/campaigns/${quizId}` : null,
+  // Função helper para presets de data/hora
+  const applyPreset = (preset) => {
+    const now = new Date();
+    let start, end;
+
+    switch (preset) {
+      case 'last-hour':
+        start = new Date(now.getTime() - 60 * 60 * 1000);
+        end = now;
+        break;
+      case 'last-24h':
+        start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        end = now;
+        break;
+      case 'last-7d':
+        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        end = now;
+        break;
+      case 'last-30d':
+        start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        end = now;
+        break;
+      default:
+        return;
+    }
+
+    setStartDate(start.toISOString().split('T')[0]);
+    setStartTime(start.toTimeString().slice(0, 5));
+    setEndDate(end.toISOString().split('T')[0]);
+    setEndTime(end.toTimeString().slice(0, 5));
+    setUseCustomDates(true);
+  };
+
+  // Constrói URL da API com filtros de data
+  const campaignsUrl = useMemo(() => {
+    if (!isAuthenticated || !quizId) return null;
+
+    const params = new URLSearchParams();
+
+    if (useCustomDates && startDate && endDate) {
+      // Modo customizado: usa datas/horas selecionadas pelo usuário
+      const start = new Date(`${startDate}T${startTime}`).toISOString();
+      const end = new Date(`${endDate}T${endTime}`).toISOString();
+      params.append('startDate', start);
+      params.append('endDate', end);
+    } else {
+      // Modo padrão: HOJE das 00:00 até AGORA
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      params.append('startDate', todayStart.toISOString());
+      params.append('endDate', now.toISOString());
+    }
+
+    const url = `/api/campaigns/${quizId}${params.toString() ? `?${params.toString()}` : ''}`;
+    return url;
+  }, [isAuthenticated, quizId, useCustomDates, startDate, startTime, endDate, endTime]);
+
+  // Busca campanhas do quiz com filtros
+  const { data, error, isLoading, mutate } = useSWR(
+    campaignsUrl,
     fetcher,
     {
       refreshInterval: 30000, // 30 segundos
@@ -99,9 +163,107 @@ export default function CampaignsPage() {
                   Campanhas - {quizId || 'Carregando...'}
                 </h1>
                 <p className="text-gray-600 mt-2">
-                  Estatísticas por campanha UTM
+                  Estatísticas de hoje por campanha UTM - Atualização automática a cada 30 segundos
                 </p>
               </div>
+              <button
+                onClick={() => mutate()}
+                disabled={isLoading}
+                className="text-sm bg-indigo-100 text-indigo-700 px-3 py-1 rounded hover:bg-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Atualizar dados agora"
+              >
+                🔄 Atualizar
+              </button>
+            </div>
+
+            {/* Filtros de Data/Hora */}
+            <div className="mt-6 border-t pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="checkbox"
+                  id="custom-dates-toggle"
+                  checked={useCustomDates}
+                  onChange={(e) => setUseCustomDates(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label htmlFor="custom-dates-toggle" className="text-sm font-medium text-gray-700">
+                  Usar intervalo de data/hora customizado
+                </label>
+              </div>
+
+              {useCustomDates && (
+                <>
+                  {/* Presets rápidos */}
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => applyPreset('last-hour')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Última hora
+                    </button>
+                    <button
+                      onClick={() => applyPreset('last-24h')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Últimas 24h
+                    </button>
+                    <button
+                      onClick={() => applyPreset('last-7d')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Últimos 7 dias
+                    </button>
+                    <button
+                      onClick={() => applyPreset('last-30d')}
+                      className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                    >
+                      Últimos 30 dias
+                    </button>
+                  </div>
+
+                  {/* Date/Time pickers */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Data/Hora Início
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        <input
+                          type="time"
+                          value={startTime}
+                          onChange={(e) => setStartTime(e.target.value)}
+                          className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Data/Hora Fim
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        <input
+                          type="time"
+                          value={endTime}
+                          onChange={(e) => setEndTime(e.target.value)}
+                          className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
