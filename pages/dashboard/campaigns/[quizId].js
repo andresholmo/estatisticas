@@ -113,8 +113,9 @@ export default function CampaignsPage() {
     campaignsUrl,
     fetcher,
     {
-      refreshInterval: 30000, // 30 segundos
+      refreshInterval: 60000, // 60 segundos (reduzido para diminuir carga no banco)
       revalidateOnFocus: true,
+      refreshWhenHidden: false, // Não faz polling quando aba está escondida
     }
   );
 

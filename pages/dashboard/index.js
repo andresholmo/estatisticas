@@ -133,12 +133,12 @@ export default function Dashboard() {
     statsUrl,
     fetcher,
     {
-      refreshInterval: 15000, // 15 segundos (como no print)
+      refreshInterval: 60000, // 60 segundos (reduzido para diminuir carga no banco)
       revalidateOnFocus: true,
       revalidateIfStale: true,
       revalidateOnMount: true,
       dedupingInterval: 2000,
-      refreshWhenHidden: true,
+      refreshWhenHidden: false, // Não faz polling quando aba está escondida
       refreshWhenOffline: false,
       onError: (err) => {
         console.error('[Dashboard] SWR Error:', err);
