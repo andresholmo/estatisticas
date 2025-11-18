@@ -14,10 +14,9 @@ export default async function handler(req, res) {
     timestamp: new Date().toISOString(),
     environment: {
       nodeEnv: process.env.NODE_ENV,
-      supabaseUrlConfigured: !!process.env.SUPABASE_URL,
-      supabaseKeyConfigured: !!process.env.SUPABASE_KEY,
-      supabasePublicUrlConfigured: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      supabasePublicKeyConfigured: !!process.env.NEXT_PUBLIC_SUPABASE_KEY,
+      supabaseUrlConfigured: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseAnonKeyConfigured: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      supabaseServiceRoleKeyConfigured: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
     },
     supabase: {
       configured: isSupabaseConfigured(),
