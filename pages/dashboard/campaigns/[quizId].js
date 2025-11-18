@@ -97,10 +97,10 @@ export default function CampaignsPage() {
       params.append('startDate', start);
       params.append('endDate', end);
     } else {
-      // Modo padrão: HOJE das 00:00 até AGORA
+      // Modo padrão: ÚLTIMA 1 HORA (volume muito grande de dados)
       const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-      params.append('startDate', todayStart.toISOString());
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      params.append('startDate', oneHourAgo.toISOString());
       params.append('endDate', now.toISOString());
     }
 
@@ -113,8 +113,9 @@ export default function CampaignsPage() {
     campaignsUrl,
     fetcher,
     {
-      refreshInterval: 30000, // 30 segundos
+      refreshInterval: 60000, // 60 segundos (reduzido para diminuir carga no banco)
       revalidateOnFocus: true,
+      refreshWhenHidden: false, // Não faz polling quando aba está escondida
     }
   );
 
@@ -163,7 +164,7 @@ export default function CampaignsPage() {
                   Campanhas - {quizId || 'Carregando...'}
                 </h1>
                 <p className="text-gray-600 mt-2">
-                  Estatísticas de hoje por campanha UTM - Atualização automática a cada 30 segundos
+                  Estatísticas da última hora por campanha UTM - Atualização automática a cada 30 segundos
                 </p>
               </div>
               <button
