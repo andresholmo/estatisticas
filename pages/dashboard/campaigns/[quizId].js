@@ -91,10 +91,17 @@ export default function CampaignsPage() {
     const params = new URLSearchParams();
 
     if (useCustomDates && startDate && endDate) {
+      // Modo customizado: usa datas/horas selecionadas pelo usuário
       const start = new Date(`${startDate}T${startTime}`).toISOString();
       const end = new Date(`${endDate}T${endTime}`).toISOString();
       params.append('startDate', start);
       params.append('endDate', end);
+    } else {
+      // Modo padrão: HOJE das 00:00 até AGORA
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      params.append('startDate', todayStart.toISOString());
+      params.append('endDate', now.toISOString());
     }
 
     const url = `/api/campaigns/${quizId}${params.toString() ? `?${params.toString()}` : ''}`;
@@ -156,7 +163,7 @@ export default function CampaignsPage() {
                   Campanhas - {quizId || 'Carregando...'}
                 </h1>
                 <p className="text-gray-600 mt-2">
-                  Estatísticas por campanha UTM - Atualização automática a cada 30 segundos
+                  Estatísticas de hoje por campanha UTM - Atualização automática a cada 30 segundos
                 </p>
               </div>
               <button
